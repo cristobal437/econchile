@@ -29,6 +29,7 @@ Repository = "https://github.com/cristobal437/econchile"
 
 [project.optional-dependencies]
 test = ["pytest>=7.0"]
+examples = ["matplotlib>=3.5"]
 
 [tool.setuptools.packages.find]
 where = ["."]
