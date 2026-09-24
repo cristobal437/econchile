@@ -21,7 +21,7 @@ when not, and a clear, actionable error when neither is available.
 
 Usage::
 
-    from econchile.offline import OfflineClient
+    from econchile import OfflineClient
 
     client = OfflineClient()                      # token from BCCH_TOKEN
     result = client.get("UF", "2024-01-01", "2024-12-31")
@@ -34,7 +34,7 @@ from pathlib import Path
 import requests
 
 from econchile.cache import Cache, make_key
-from econchile.client import _resolve_series
+from econchile.client import _code_of, _resolve_series
 from econchile.fetcher import Fetcher, _validate_dates
 from econchile.series_map import Series
 from econchile.types import BcchApiError, BcchOfflineError, SeriesResult
@@ -80,7 +80,7 @@ class OfflineClient:
 
         Args:
             series: A ``Series`` member, a human name (case-insensitive),
-                or a raw BCCh code string.
+                or any BCCh code string (indexed or not).
             desde: Start date, ``YYYY-MM-DD`` (required).
             hasta: End date, ``YYYY-MM-DD`` (required).
 
@@ -91,7 +91,8 @@ class OfflineClient:
 
         Raises:
             KeyError: If ``series`` does not resolve to a known series.
-            ValueError: If ``desde``/``hasta`` are not ``YYYY-MM-DD``.
+            ValueError: If ``desde``/``hasta`` are not ``YYYY-MM-DD``,
+                or ``desde`` is after ``hasta``.
             BcchOfflineError: If the API fails AND the cache has no
                 usable data for this key.
         """
@@ -99,7 +100,7 @@ class OfflineClient:
         # Validate BEFORE any cache or network I/O: a bad date must fail
         # fast and never trigger a cache lookup or an HTTP request.
         _validate_dates(desde, hasta)
-        code = resolved.value
+        code = _code_of(resolved)
         # The key encodes exactly which query produced the data, so
         # different date ranges of the same series stay separate entries.
         key = make_key(code, desde, hasta)

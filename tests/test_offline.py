@@ -299,6 +299,23 @@ class TestSeriesResolution:
         with pytest.raises(KeyError):
             offline.get("NOT_A_SERIES", DESDE, HASTA)
 
+    def test_accepts_raw_code_outside_catalog(self, offline):
+        """A BCCh code outside the indexed enum passes through (v0.2.1)."""
+        from datetime import datetime
+
+        code = "F072.CLP.EUR.N.O.D"
+        offline.stub_result = SeriesResult(
+            series=code,
+            observations=[Observation(date="2024-01-02", value=1000.0)],
+            fetched_at=datetime(2024, 1, 3, 10, 0, 0),
+        )
+
+        result = offline.get(code, DESDE, HASTA)
+
+        assert result.series == code
+        # Warm fallback stored under the raw code.
+        assert offline._cache.get_series(code, DESDE, HASTA) is not None
+
 
 class TestValidation:
     """Date validation happens before any I/O."""

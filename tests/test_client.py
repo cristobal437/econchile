@@ -178,6 +178,19 @@ class TestGet:
         finally:
             monkeypatch.undo()
 
+    def test_desde_after_hasta_raises_before_io(self, client, monkeypatch):
+        """desde > hasta → ValueError, no cache/API interaction (v0.2.1)."""
+        monkeypatch.setattr(
+            "econchile.fetcher.Fetcher.get_series",
+            raise_if_called("fetcher must not be called for an inverted window"),
+        )
+        monkeypatch.setattr(
+            "econchile.cache.Cache.get",
+            raise_if_called("cache.get must not be called for an inverted window"),
+        )
+        with pytest.raises(ValueError):
+            client.get(Series.USD, "2024-12-31", "2024-01-01")
+
 
 class TestSeriesResolution:
     """get()/search() accept names, enums, codes."""
@@ -240,13 +253,46 @@ class TestSeriesResolution:
         assert "NONEXISTENT" in message
         assert "UF" in message  # the catalog is listed, so it's actionable
         assert "IPC_VAR" in message
+        assert "raw BCCh code" in message  # v0.2.1: points to the raw-code path
+
+    def test_raw_code_outside_catalog_passes_through(self, client, monkeypatch):
+        """Any BCCh code works, even outside the indexed enum (v0.2.1)."""
+        code = "F072.CLP.EUR.N.O.D"  # CLP per EUR, not indexed
+        raw_result = SeriesResult(
+            series=code,
+            observations=[Observation(date="2024-01-02", value=1000.0)],
+            fetched_at=datetime(2024, 1, 3, 10, 0, 0),
+            source="api",
+        )
+        calls = []
+        monkeypatch.setattr(
+            "econchile.fetcher.Fetcher.get_series",
+            make_fake_fetcher(raw_result, calls),
+        )
+
+        result = client.get(code, "2024-01-01", "2024-01-31")
+
+        assert len(calls) == 1
+        assert calls[0][0] == code and not isinstance(calls[0][0], Series)
+        assert result.series == code
+        # Cached under the raw code: a second call never reaches the fetcher.
+        stored = client._cache.get_series(code, "2024-01-01", "2024-01-31")
+        assert stored is not None and stored.series == code
+        client.get(code, "2024-01-01", "2024-01-31")
+        assert len(calls) == 1
+
+    def test_non_code_garbage_still_key_error(self, client):
+        """Strings that are neither names nor code-shaped still raise KeyError."""
+        for bad in ("dolar observado", "F07", "123.ABC"):
+            with pytest.raises(KeyError):
+                client.get(bad, "2024-01-01", "2024-12-31")
 
 
 class TestSearch:
     """client.search() — catalog keyword search."""
 
-    def test_search_ipc_returns_two(self, client):
-        """search('ipc') → matches IPC_VAR and IPC_INDEX."""
+    def test_search_ipc_returns_all_ipc_series(self, client):
+        """search('ipc') → every IPC member of the indexed catalog."""
         results = client.search("ipc")
 
         ids = {m.series_id for m in results}
@@ -289,7 +335,7 @@ class TestSearch:
 class TestListSeries:
     """client.list_series()."""
 
-    def test_returns_seven(self, client):
+    def test_returns_all_indexed(self, client):
         """list_series() → all indexed SeriesMeta objects."""
         assert len(client.list_series()) == len(list(Series))
 

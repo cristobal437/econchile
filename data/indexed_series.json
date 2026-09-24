@@ -20,24 +20,24 @@
     "code": "F072.EUR.USD.N.O.D",
     "frequency": "DAILY",
     "representation": "LEVEL",
-    "spanish_title": "Tipo de cambio euro/dólar (USD por EUR)",
-    "english_title": "Euro/US dollar exchange rate (USD per EUR)"
+    "spanish_title": "Euro por dólar de EE.UU. (EUR por USD)",
+    "english_title": "Euro per US dollar (EUR per USD)"
   },
   {
     "name": "TCM",
     "code": "F073.TCM.IND.199502.D",
     "frequency": "DAILY",
     "representation": "INDEX",
-    "spanish_title": "Tipo de cambio medio (índice base 199502=1)",
-    "english_title": "Average exchange rate index (base 199502=1)"
+    "spanish_title": "Tipo de cambio nominal multilateral (TCM, índice 2 enero 1998=100)",
+    "english_title": "Multilateral nominal exchange rate (TCM, index 2 Jan 1998=100)"
   },
   {
     "name": "TCR",
     "code": "F073.TCR.IND.199101.M",
     "frequency": "MONTHLY",
     "representation": "INDEX",
-    "spanish_title": "Tipo de cambio real (índice base 199101=1)",
-    "english_title": "Real exchange rate index (base 199101=1)"
+    "spanish_title": "Tipo de cambio real (TCR, índice promedio 1986=100)",
+    "english_title": "Real exchange rate index (TCR, average 1986=100)"
   },
   {
     "name": "UTM",
@@ -52,8 +52,8 @@
     "code": "F073.IVP.PRE.Z.D",
     "frequency": "DAILY",
     "representation": "LEVEL",
-    "spanish_title": "Índice de Valor Real (IVP)",
-    "english_title": "Real Value Index (IVP)"
+    "spanish_title": "Índice de valor promedio (IVP)",
+    "english_title": "Average value index (IVP)"
   },
   {
     "name": "TPM",
@@ -100,8 +100,8 @@
     "code": "F074.IPCSAE.VAR.Z.2023.C.M",
     "frequency": "MONTHLY",
     "representation": "MOM",
-    "spanish_title": "IPC estacionalmente ajustado, variación mensual (base 2023)",
-    "english_title": "CPI seasonally adjusted, monthly change (base 2023)"
+    "spanish_title": "IPC SAE (sin alimentos ni energía), variación mensual (base 2023)",
+    "english_title": "CPI excluding food and energy (SAE), monthly change (base 2023)"
   },
   {
     "name": "IPP",
@@ -196,8 +196,8 @@
     "code": "F089.TPM.TAS.11.M",
     "frequency": "MONTHLY",
     "representation": "LEVEL",
-    "spanish_title": "Expectativa de TPM a 11 meses",
-    "english_title": "TPM expectation 11 months ahead"
+    "spanish_title": "Expectativa de TPM para el mes en curso (mediana, EEE)",
+    "english_title": "Expected monetary policy rate, current month (median, EEE survey)"
   },
   {
     "name": "IPC_EXPECTED",

@@ -76,3 +76,23 @@ class TestReadmeClaims:
         readme = _read("README.md")
         assert "to_dataframe" not in readme
         assert "to_frame" not in readme
+
+    def test_no_stale_token_requirement(self):
+        """Token is optional at construction since 0.1.2 — README must not say otherwise."""
+        readme = _read("README.md")
+        assert "required for v0.1" not in readme
+
+
+class TestPublicExports:
+    """Users can import clients, data types and errors from the top level (v0.2.1)."""
+
+    NAMES = [
+        "BcchClient", "OfflineClient", "Series", "SeriesMeta", "SeriesResult",
+        "Observation", "Frequency", "Representation",
+        "BcchError", "BcchApiError", "BcchCacheError", "BcchOfflineError",
+    ]
+
+    def test_top_level_names_exported(self):
+        for name in self.NAMES:
+            assert hasattr(econchile, name), f"econchile.{name} missing"
+            assert name in econchile.__all__, f"{name} not in __all__"

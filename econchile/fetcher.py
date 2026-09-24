@@ -63,7 +63,7 @@ def _resolve_series(series: str | Series) -> tuple[Series | str, str]:
     """Normalise to ``(identity, code)``.
 
     ``identity`` is the ``Series`` enum member when the code is in the
-    v0.1 catalog (so ``result.series`` is always an enum for known
+    indexed catalog (so ``result.series`` is always an enum for known
     series), otherwise the raw code string (graceful degradation).
     """
     if isinstance(series, Series):
@@ -79,7 +79,8 @@ def _validate_dates(desde: str, hasta: str) -> None:
     """Enforce ``YYYY-MM-DD`` on both bounds of the query window.
 
     Raises:
-        ValueError: If either value is not a valid ``YYYY-MM-DD`` date.
+        ValueError: If either value is not a valid ``YYYY-MM-DD`` date,
+            or if ``desde`` is after ``hasta``.
     """
     for name, value in (("desde", desde), ("hasta", hasta)):
         if not isinstance(value, str) or not _DATE_RE.match(value):
@@ -87,6 +88,9 @@ def _validate_dates(desde: str, hasta: str) -> None:
                 f"{name} must be a date in YYYY-MM-DD format, got {value!r}"
             )
         datetime.strptime(value, "%Y-%m-%d")  # rejects impossible dates
+    # ISO dates compare correctly as strings.
+    if desde > hasta:
+        raise ValueError(f"desde ({desde}) must not be after hasta ({hasta})")
 
 
 def _decode(content: bytes) -> str:

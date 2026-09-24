@@ -102,8 +102,8 @@ class TestSetGet:
         result = cache.get("k")
         assert result.series is Series.USD
 
-    def test_source_set_to_cache(self, cache, sample_result):
-        """After get(), source == 'cache' (or preserved from stored).
+    def test_source_preserved_from_stored(self, cache, sample_result):
+        """After get(), source is preserved from the stored payload.
 
         The spec says "keep as stored" — the reconstructed result carries
         the same source as the stored payload (here "api").
@@ -135,7 +135,7 @@ class TestSetGet:
         assert result.fetched_at == datetime(2024, 2, 1, 9, 0, 0)
 
     def test_unknown_series_code_falls_back_to_string(self, cache):
-        """A stored code not in the v0.1 catalog comes back as the raw string."""
+        """A stored code not in the indexed catalog comes back as the raw string."""
         unknown = SeriesResult(
             series="ZZZ.NOT.IN.CATALOG",
             observations=[Observation(date="2024-01-01", value=1.0)],

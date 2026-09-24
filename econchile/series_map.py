@@ -25,7 +25,7 @@ class Series(str, Enum):
     # ── FX & money ──
     UF = "F073.UFF.PRE.Z.D"
     USD = "F073.TCO.PRE.Z.D"
-    EURO = "F072.EUR.USD.N.O.D"  # USD per EUR (NOT CLP/EUR)
+    EURO = "F072.EUR.USD.N.O.D"  # EUR per USD (NOT CLP/EUR; that is F072.CLP.EUR.N.O.D)
     TCM = "F073.TCM.IND.199502.D"
     TCR = "F073.TCR.IND.199101.M"
     UTM = "F073.UTR.PRE.Z.M"
@@ -110,8 +110,8 @@ _META_MAP: dict[Series, SeriesMeta] = {
     ),
     Series.EURO: SeriesMeta(
         series_id=Series.EURO.value,
-        spanish_title="Tipo de cambio euro/dólar (USD por EUR)",
-        english_title="Euro/US dollar exchange rate (USD per EUR)",
+        spanish_title="Euro por dólar de EE.UU. (EUR por USD)",
+        english_title="Euro per US dollar (EUR per USD)",
         frequency=Frequency.DAILY,
         first_observation=None,
         last_observation=None,
@@ -119,8 +119,8 @@ _META_MAP: dict[Series, SeriesMeta] = {
     ),
     Series.TCM: SeriesMeta(
         series_id=Series.TCM.value,
-        spanish_title="Tipo de cambio medio (índice base 199502=1)",
-        english_title="Average exchange rate index (base 199502=1)",
+        spanish_title="Tipo de cambio nominal multilateral (TCM, índice 2 enero 1998=100)",
+        english_title="Multilateral nominal exchange rate (TCM, index 2 Jan 1998=100)",
         frequency=Frequency.DAILY,
         first_observation=None,
         last_observation=None,
@@ -128,8 +128,8 @@ _META_MAP: dict[Series, SeriesMeta] = {
     ),
     Series.TCR: SeriesMeta(
         series_id=Series.TCR.value,
-        spanish_title="Tipo de cambio real (índice base 199101=1)",
-        english_title="Real exchange rate index (base 199101=1)",
+        spanish_title="Tipo de cambio real (TCR, índice promedio 1986=100)",
+        english_title="Real exchange rate index (TCR, average 1986=100)",
         frequency=Frequency.MONTHLY,
         first_observation=None,
         last_observation=None,
@@ -146,8 +146,8 @@ _META_MAP: dict[Series, SeriesMeta] = {
     ),
     Series.IVP: SeriesMeta(
         series_id=Series.IVP.value,
-        spanish_title="Índice de Valor Real (IVP)",
-        english_title="Real Value Index (IVP)",
+        spanish_title="Índice de valor promedio (IVP)",
+        english_title="Average value index (IVP)",
         frequency=Frequency.DAILY,
         first_observation=None,
         last_observation=None,
@@ -200,8 +200,8 @@ _META_MAP: dict[Series, SeriesMeta] = {
     ),
     Series.IPC_SAE: SeriesMeta(
         series_id=Series.IPC_SAE.value,
-        spanish_title="IPC estacionalmente ajustado, variación mensual (base 2023)",
-        english_title="CPI seasonally adjusted, monthly change (base 2023)",
+        spanish_title="IPC SAE (sin alimentos ni energía), variación mensual (base 2023)",
+        english_title="CPI excluding food and energy (SAE), monthly change (base 2023)",
         frequency=Frequency.MONTHLY,
         first_observation=None,
         last_observation=None,
@@ -308,8 +308,10 @@ _META_MAP: dict[Series, SeriesMeta] = {
     ),
     Series.TPM_EXPECTED: SeriesMeta(
         series_id=Series.TPM_EXPECTED.value,
-        spanish_title="Expectativa de TPM a 11 meses",
-        english_title="TPM expectation 11 months ahead",
+        # BCCh descripEsp: "en el mes, mediana" (Encuesta de Expectativas
+        # Económicas). NOT 11 months ahead; that is F089.TPM.TAS.14.M.
+        spanish_title="Expectativa de TPM para el mes en curso (mediana, EEE)",
+        english_title="Expected monetary policy rate, current month (median, EEE survey)",
         frequency=Frequency.MONTHLY,
         first_observation=None,
         last_observation=None,

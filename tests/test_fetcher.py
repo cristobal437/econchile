@@ -79,7 +79,7 @@ def fake_get(monkeypatch):
 
 @pytest.fixture
 def sample_series():
-    """Series.USD — typical v0.1 series."""
+    """Series.USD — typical indexed series."""
     return Series.USD
 
 
@@ -256,6 +256,16 @@ class TestFetchValidation:
 
 
 # ─── Error handling ────────────────────────────────────────────────────
+
+
+class TestInvertedWindow:
+    """desde > hasta is a client error (v0.2.1)."""
+
+    def test_desde_after_hasta_raises_value_error(self, fake_get):
+        with pytest.raises(ValueError):
+            Fetcher(token="test-token-123").fetch(
+                Series.USD, "2024-12-31", "2024-01-01"
+            )
 
 
 class TestFetchErrors:

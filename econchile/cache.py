@@ -285,7 +285,7 @@ class Cache:
         """Rebuild a SeriesResult from a stored JSON payload."""
         data: dict[str, Any] = json.loads(payload)
         try:
-            # Recover the enum member when the code is in the v0.1 catalog…
+            # Recover the enum member when the code is in the indexed catalog…
             series = Series.from_code(data["series"])
         except KeyError:
             # …otherwise keep the raw code string (graceful degradation).
