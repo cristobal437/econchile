@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.2] - 2026-09-24
+
+Packaging and CI hardening. No library behaviour changes.
+See `specs/v022_packaging_ci_spec.md`.
+
+### Fixed
+
+- `pytest` now passes inside the published sdist: tests that need files
+  not shipped there (`.github/`, `examples/`, legacy `data/` backups)
+  skip themselves, and `data/indexed_series.json` is now included.
+  (0.2.0 and 0.2.1 sdists had 8+ failing tests.)
+- Build requirement raised to `setuptools>=77` — `license = "MIT"`
+  (PEP 639) is rejected by older setuptools.
+- Publish job now fails loudly when the tag does not match the
+  `pyproject.toml` version, instead of silently uploading nothing.
+- Walkthrough notebook re-rendered (ships with outputs) and no longer
+  prints "ALL 7 SERIES".
+
+### Changed
+
+- CI tests Python 3.10 – 3.14 (added 3.13 and 3.14, `fail-fast: false`);
+  classifiers match.
+- CI builds the package and runs `twine check --strict` on every PR.
+- CI actions moved off Node 20 (`actions/checkout@v5`,
+  `actions/setup-python@v6`); workflow default permissions are read-only.
+- `specs/README.md` explains baseline vs delta specs and lists known drift.
+
 ## [0.2.1] - 2026-09-24
 
 Trust fix: the library now says what BCCh says. No codes or values

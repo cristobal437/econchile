@@ -5,11 +5,15 @@
 # (tests need it in the repo, but it should not bloat the sdist) and
 # exclude any leftover build artifacts / private study notes.
 
-# Include the real test fixture only if explicitly wanted — for v0.1 we
-# exclude it from the sdist to keep the download small. Tests that depend
-# on it are skipped/guarded in CI when the file is absent.
+# Include the real test fixture only if explicitly wanted — we exclude it
+# from the sdist to keep the download small. Tests that depend on missing
+# files (fixture, legacy data/, .github/, examples/) skip themselves, so
+# `pytest` passes inside an extracted sdist.
 exclude sample_response.json
 exclude multi_series_sample.json
+
+# The indexed catalog is small and tests/test_catalog_labels.py needs it.
+include data/indexed_series.json
 
 # Private annotated learning notes never ship
 recursive-exclude econchile/study *
