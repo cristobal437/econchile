@@ -2,13 +2,13 @@
 
 ## What this is
 
-Small Python 3.10+ OSS library wrapping the Banco Central de Chile (BCCh) SIE REST API: fetch official macro series (UF, USD, TPM, IPC, IMACEC, PIB — 28 indexed, any other BCCh code via raw string), parse into typed data, cache in SQLite. Published on PyPI as `econchile` (v0.2.1, MIT).
+Small Python 3.10+ OSS library wrapping the Banco Central de Chile (BCCh) SIE REST API: fetch official macro series (UF, USD, TPM, IPC, IMACEC, PIB — 28 indexed, any other BCCh code via raw string), parse into typed data, cache in SQLite. Published on PyPI as `econchile` (v0.2.2, MIT).
 
 ## Commands
 
 ```bash
 pip install -e ".[test]"     # editable install + pytest
-python -m pytest tests/ -q   # 331 tests, must stay green
+python -m pytest tests/ -q   # 341 tests, must stay green
 python examples/demo.py      # offline demo, runs without BCCH_TOKEN
 ```
 
@@ -16,8 +16,8 @@ python examples/demo.py      # offline demo, runs without BCCH_TOKEN
 
 ## Conventions
 
-- `specs/*.md` are the source of truth: one spec per module (v0.1 baseline) plus one delta spec per release (`v02_*`, `v021_*`). When they disagree, the newest delta spec wins. Read the spec before touching a module.
-- `tests/` are the contract. All 331 tests must stay green.
+- `specs/*.md` are the source of truth: one spec per module (v0.1 baseline) plus one delta spec per release (`v02_*`, `v021_*`, `v022_*`; index in `specs/README.md`). When they disagree, the newest delta spec wins. Read the spec before touching a module.
+- `tests/` are the contract. All 341 tests must stay green.
 - Series labels must match BCCh's own wording (API `descripEsp` / official `series.xlsx`), never be guessed from the code string. `data/indexed_series.json` is generated from the enum; `tests/test_catalog_labels.py` enforces parity.
 - **NEVER create or commit anything under `econchile/study/`** — private, gitignored annotated learning notes. Do not add `*_annotated.py` versions of new files.
 - **NEVER commit `.env`, `.env.local`, or any secret.**

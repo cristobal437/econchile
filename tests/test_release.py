@@ -13,11 +13,24 @@ import os
 import re
 import sys
 
+import pytest
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import econchile  # noqa: E402
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+WORKFLOW_PATH = os.path.join(REPO_ROOT, ".github", "workflows", "workflow.yml")
+WALKTHROUGH_PATH = os.path.join(REPO_ROOT, "examples", "econchile_walkthrough.ipynb")
+
+# The sdist ships tests/ but not .github/ or examples/ — skip the checks that
+# need those files there, so `pytest` passes inside the sdist (v0.2.2).
+needs_workflow = pytest.mark.skipif(
+    not os.path.exists(WORKFLOW_PATH), reason="CI workflow not shipped in the sdist"
+)
+needs_examples = pytest.mark.skipif(
+    not os.path.exists(WALKTHROUGH_PATH), reason="examples/ not shipped in the sdist"
+)
 
 
 def _read(rel_path: str) -> str:
@@ -25,6 +38,7 @@ def _read(rel_path: str) -> str:
         return f.read()
 
 
+@needs_workflow
 class TestPublishGuard:
     """The PyPI publish job must NEVER run on PRs or main pushes."""
 
@@ -96,3 +110,66 @@ class TestPublicExports:
         for name in self.NAMES:
             assert hasattr(econchile, name), f"econchile.{name} missing"
             assert name in econchile.__all__, f"{name} not in __all__"
+
+
+@needs_workflow
+class TestCiHardening:
+    """CI covers supported Pythons and cannot publish a mismatched tag (v0.2.2)."""
+
+    def test_matrix_covers_310_to_314(self):
+        wf = _read(os.path.join(".github", "workflows", "workflow.yml"))
+        for v in ("3.10", "3.11", "3.12", "3.13", "3.14"):
+            assert f'"{v}"' in wf, f"Python {v} missing from the CI matrix"
+
+    def test_publish_checks_tag_matches_version(self):
+        """A forgotten version bump must fail loudly, not skip silently."""
+        wf = _read(os.path.join(".github", "workflows", "workflow.yml"))
+        publish_block = wf[wf.index("  publish:"):]
+        assert "GITHUB_REF_NAME" in publish_block
+        assert "pyproject.toml" in publish_block
+
+    def test_package_is_built_and_checked_on_prs(self):
+        wf = _read(os.path.join(".github", "workflows", "workflow.yml"))
+        test_block = wf[wf.index("  test:"):wf.index("  publish:")]
+        assert "twine check" in test_block
+
+    def test_no_node20_actions(self):
+        wf = _read(os.path.join(".github", "workflows", "workflow.yml"))
+        assert "actions/checkout@v4" not in wf
+        assert "actions/setup-python@v5" not in wf
+
+    def test_default_permissions_read_only(self):
+        wf = _read(os.path.join(".github", "workflows", "workflow.yml"))
+        top = wf[:wf.index("jobs:")]
+        assert re.search(r"^permissions:\s*\n\s+contents:\s*read", top, re.MULTILINE)
+
+
+class TestPackaging:
+    """Build metadata that ships in every sdist (v0.2.2)."""
+
+    def test_setuptools_supports_spdx_license(self):
+        """`license = "MIT"` (PEP 639) needs setuptools >= 77."""
+        pyproject = _read("pyproject.toml")
+        match = re.search(r'"setuptools>=(\d+)', pyproject)
+        assert match and int(match.group(1)) >= 77
+
+    def test_classifiers_cover_ci_matrix(self):
+        pyproject = _read("pyproject.toml")
+        for v in ("3.10", "3.11", "3.12", "3.13", "3.14"):
+            assert f"Programming Language :: Python :: {v}" in pyproject
+
+    def test_sdist_ships_indexed_catalog(self):
+        """tests/test_catalog_labels.py needs data/indexed_series.json in the sdist."""
+        assert "include data/indexed_series.json" in _read("MANIFEST.in")
+
+
+@needs_examples
+class TestWalkthrough:
+    """The walkthrough ships pre-rendered and current (v0.2.2)."""
+
+    def test_walkthrough_is_executed(self):
+        assert '"output_type"' in _read(os.path.join("examples", "econchile_walkthrough.ipynb"))
+
+    def test_walkthrough_not_stale(self):
+        nb = _read(os.path.join("examples", "econchile_walkthrough.ipynb"))
+        assert "ALL 7 SERIES" not in nb

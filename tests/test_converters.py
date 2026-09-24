@@ -18,6 +18,8 @@ import os
 # but outside the package itself.
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+import pytest  # noqa: E402
+
 from econchile.converters import (
     safe_float,
     safe_date,
@@ -171,6 +173,10 @@ class TestNullSentinels:
 # Real data integration tests
 # ═══════════════════════════════════════════════════════════════════════
 
+@pytest.mark.skipif(
+    not (os.path.exists(JSON_PATH) and os.path.exists(CSV_PATH)),
+    reason="legacy data/ files not shipped in the sdist",
+)
 class TestRealDataIntegration:
     """Validate converters against the actual data files."""
 
