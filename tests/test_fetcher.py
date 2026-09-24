@@ -79,7 +79,7 @@ def fake_get(monkeypatch):
 
 @pytest.fixture
 def sample_series():
-    """Series.USD — typical v0.1 series."""
+    """Series.USD — typical indexed series."""
     return Series.USD
 
 

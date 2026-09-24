@@ -161,7 +161,8 @@ class BcchClient:
 
         Raises:
             KeyError: If ``series`` does not resolve to a known series.
-            ValueError: If ``desde``/``hasta`` are not ``YYYY-MM-DD``.
+            ValueError: If ``desde``/``hasta`` are not ``YYYY-MM-DD``,
+                or ``desde`` is after ``hasta``.
             BcchApiError: If the API fails on a cache miss.
         """
         resolved = _resolve_series(series)

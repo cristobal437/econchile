@@ -91,7 +91,8 @@ class OfflineClient:
 
         Raises:
             KeyError: If ``series`` does not resolve to a known series.
-            ValueError: If ``desde``/``hasta`` are not ``YYYY-MM-DD``.
+            ValueError: If ``desde``/``hasta`` are not ``YYYY-MM-DD``,
+                or ``desde`` is after ``hasta``.
             BcchOfflineError: If the API fails AND the cache has no
                 usable data for this key.
         """

@@ -223,7 +223,7 @@ def demo_parser():
 
 def demo_series_map():
     """Scenario 5: Explore the series catalog (Series enum)."""
-    banner("SCENARIO 5: Series catalog — 7 v0.1 core series")
+    banner("SCENARIO 5: Series catalog — 28 indexed series")
 
     print(f"\\n  {'Name':<14} {'Code':<28} {'Freq':<10} {'Rep':<8}")
     print(f"  {'-' * 62}")
