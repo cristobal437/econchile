@@ -33,8 +33,8 @@ class BcchCacheError(BcchError):
 class BcchOfflineError(BcchError):
     """Raised when all fallback layers (API + cache) are exhausted.
 
-    The last successful layer that provided partial data is preserved
-    in ``self.context["partial_series"]`` for diagnostic use.
+    ``self.context`` carries ``series``, ``desde``, ``hasta``,
+    ``api_error`` (the original failure) and ``cache_had_data``.
     """
 
 
@@ -44,22 +44,24 @@ class BcchOfflineError(BcchError):
 class SeriesResult:
     """The internal contract that all modules agree on.
 
-    *fetcher* produces it, *cache* stores it, *client* converts it to a
-    DataFrame, *offline* returns it on fallback.
+    *fetcher* produces it, *cache* stores it, *client* returns it,
+    *offline* returns it on fallback.
 
     Attributes:
-        series: The Series enum member this result is for.
+        series: The Series enum member this result is for, or the raw
+            BCCh code string for series outside the indexed catalog.
         observations: Parsed, clean observations (date + value).
         fetched_at: When this result was produced (UTC).
-        source: Where the data came from: "api", "cache", or "partial".
-        metadata: Dict with series_id, spanish_title, english_title,
-            frequency, representation, first_observation,
-            last_observation. Mirrors types.SeriesMeta fields.
+        source: Always ``"api"`` today — cache hits return the stored
+            result unchanged, so it keeps the value it was fetched with.
+        metadata: As returned by the BCCh API: ``series_id``,
+            ``descripEsp``, ``descripIng``, ``series_infos``.  For
+            frequency / representation use ``Series.X.meta()``.
     """
-    series: Any          # Series enum — kept as Any to avoid circular import
+    series: Any          # Series enum or raw code str — Any avoids a circular import
     observations: list   # list[Observation] — kept as `list` for simplicity
     fetched_at: datetime
-    source: str = "api"  # "api" | "cache" | "partial"
+    source: str = "api"
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:

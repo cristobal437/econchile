@@ -102,8 +102,8 @@ class TestSetGet:
         result = cache.get("k")
         assert result.series is Series.USD
 
-    def test_source_set_to_cache(self, cache, sample_result):
-        """After get(), source == 'cache' (or preserved from stored).
+    def test_source_preserved_from_stored(self, cache, sample_result):
+        """After get(), source is preserved from the stored payload.
 
         The spec says "keep as stored" — the reconstructed result carries
         the same source as the stored payload (here "api").

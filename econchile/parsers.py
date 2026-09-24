@@ -6,8 +6,8 @@ latin-1 / ISO-8859-1), decodes them, validates the API-level status
 code, and returns clean, typed Python dicts ready for downstream
 consumption.
 
-Uses ``converters.safe_float`` and ``converters.safe_date`` for value
-normalisation, inheriting their crash-safe guarantees.
+Uses ``converters.safe_float`` for value normalisation, inheriting its
+crash-safe guarantees.
 """
 
 from __future__ import annotations

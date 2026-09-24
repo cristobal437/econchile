@@ -4,7 +4,7 @@ Tests for econchile.series_map — BCCh series enum catalog.
 Run with:
     pytest tests/test_series_map.py -v
 
-Validates all 27 v0.2 indexed series members, metadata correctness,
+Validates all 28 v0.2 indexed series members, metadata correctness,
 from_code lookup, uniqueness, and list_all.
 """
 

@@ -5,6 +5,50 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-09-24
+
+Trust fix: the library now says what BCCh says. No codes or values
+changed. See `specs/v021_trust_fix_spec.md`.
+
+### Fixed
+
+- **Six series labels were wrong** (codes and data were always correct).
+  Verified against the live API `descripEsp` and the official
+  `series.xlsx` catalog:
+  - `EURO` is **EUR per USD** (~0.87), not USD per EUR. Check:
+    USD ÷ EURO = BCCh's own CLP per EUR (`F072.CLP.EUR.N.O.D`).
+  - `TPM_EXPECTED` is the expected policy rate for the **current month**
+    (EEE survey median), not 11 months ahead (that is `F089.TPM.TAS.14.M`).
+  - `IPC_SAE` is CPI **sin alimentos ni energía** (core), not seasonally
+    adjusted.
+  - `TCM` is the **multilateral** nominal exchange rate (index 2 Jan
+    1998=100), not "tipo de cambio medio".
+  - `TCR` base is **average 1986=100**, not 199101=1.
+  - `IVP` is **Índice de valor promedio**, not "valor real".
+- **Raw BCCh codes now work in `BcchClient.get` and `OfflineClient.get`**,
+  as the 0.2.0 README promised. Any code-shaped string outside the
+  indexed enum passes through; `result.series` is the code string and it
+  is cached under the code. Previously it raised `KeyError`.
+- `desde` after `hasta` now raises `ValueError` before any cache or API
+  call (previously it spent a network request).
+- README: `source` (always `"api"` today) and `metadata` keys now
+  describe the real behaviour; the offline fallback scope (same query,
+  within the TTL) is stated plainly; the stale "token required for v0.1"
+  line is gone; `search()` is documented as indexed-only.
+- Stale docstrings (`v0.1 catalog`, DataFrame, `partial_series`),
+  AGENTS.md (version, test count, 429 is retried), SECURITY.md (0.2.x).
+
+### Added
+
+- Top-level exports: `from econchile import OfflineClient, Observation,
+  Frequency, Representation, BcchError, BcchApiError, BcchCacheError,
+  BcchOfflineError`.
+- `tests/test_catalog_labels.py`: label regression tests and
+  `data/indexed_series.json` ↔ enum parity.
+- `examples/charts_tutorial.ipynb` (didactic, multi-chart) and an
+  `examples` extra (merged after 0.2.0).
+- 331 tests (was 315).
+
 ## [0.2.0] - 2026-08-22
 
 ### Added

@@ -2,13 +2,13 @@
 
 ## What this is
 
-Small Python 3.10+ OSS library wrapping the Banco Central de Chile (BCCh) SIE REST API: fetch official macro series (UF, USD, TPM, IPC, IMACEC, PIB), parse into typed data, cache in SQLite. Published on PyPI as `econchile` (v0.1.0, MIT).
+Small Python 3.10+ OSS library wrapping the Banco Central de Chile (BCCh) SIE REST API: fetch official macro series (UF, USD, TPM, IPC, IMACEC, PIB — 28 indexed, any other BCCh code via raw string), parse into typed data, cache in SQLite. Published on PyPI as `econchile` (v0.2.1, MIT).
 
 ## Commands
 
 ```bash
 pip install -e ".[test]"     # editable install + pytest
-python -m pytest tests/ -q   # 201 tests, must stay green
+python -m pytest tests/ -q   # 331 tests, must stay green
 python examples/demo.py      # offline demo, runs without BCCH_TOKEN
 ```
 
@@ -16,8 +16,9 @@ python examples/demo.py      # offline demo, runs without BCCH_TOKEN
 
 ## Conventions
 
-- `specs/*.md` are the source of truth: one spec per module. Read the spec before touching a module.
-- `tests/` are the contract. All 201 tests must stay green.
+- `specs/*.md` are the source of truth: one spec per module (v0.1 baseline) plus one delta spec per release (`v02_*`, `v021_*`). When they disagree, the newest delta spec wins. Read the spec before touching a module.
+- `tests/` are the contract. All 331 tests must stay green.
+- Series labels must match BCCh's own wording (API `descripEsp` / official `series.xlsx`), never be guessed from the code string. `data/indexed_series.json` is generated from the enum; `tests/test_catalog_labels.py` enforces parity.
 - **NEVER create or commit anything under `econchile/study/`** — private, gitignored annotated learning notes. Do not add `*_annotated.py` versions of new files.
 - **NEVER commit `.env`, `.env.local`, or any secret.**
 - `sample_response.json` (8MB real API fixture, UTF-16) stays tracked as-is — `tests/test_parsers.py` needs it. It is excluded from the sdist via MANIFEST.in. Do not trim, remove, or "fix" it.
@@ -32,7 +33,7 @@ Resolution chain: API → SQLite cache → raise. Two clients: `BcchClient` is c
 - Public API takes dates as `YYYY-MM-DD`; BCCh sends `DD-MM-YYYY` internally — converters handle the conversion, don't mix formats.
 - BCCh marks missing data with `statusCode == "ND"` → parsed as `value=None`, never zero or an exception.
 - BCCh response encoding is unstable: UTF-16 with BOM, UTF-8, or latin-1 (ISO-8859-1) with raw accented bytes. Decode order: UTF-16 BOM → UTF-8 → latin-1 (latin-1 never fails). Applies to both `fetcher._decode` and `parsers.parse_response`.
-- The fetcher retries transient failures — network errors, HTTP 5xx, and non-JSON/HTML bodies — up to `max_retries` (default 2) with exponential backoff (`retry_backoff * 2**attempt`). HTTP 4xx and `Codigo != 0` business errors are never retried.
+- The fetcher retries transient failures — network errors, HTTP 5xx, HTTP 429, and non-JSON/HTML bodies — up to `max_retries` (default 2) with exponential backoff (`retry_backoff * 2**attempt`). Other HTTP 4xx and `Codigo != 0` business errors are never retried.
 - **Token is optional at construction** (both clients); it is validated at fetch time and a missing token raises `BcchApiError` before any network I/O — so `OfflineClient` serves cached data without a token (the fallback treats it as an API failure), and `BcchClient` cache hits work too.
 - BCCh API tokens may contain `/` — the fetcher URL-encodes them automatically via `urlencode` (`/` → `%2F`). Never build API URLs by hand-formatting the raw token into the query string; always pass it through `urllib.parse.urlencode`/`quote`.
 

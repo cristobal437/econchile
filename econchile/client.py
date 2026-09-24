@@ -17,23 +17,25 @@ Usage::
     client = BcchClient()                      # token from BCCH_TOKEN env
     result = client.get("UF", "2024-01-01", "2024-12-31")
     hits = client.search("ipc")                # catalog search
-    catalog = client.list_series()             # all v0.1 series
+    catalog = client.list_series()             # all indexed series
 
 Design highlights:
 
 * **Series identifiers** — a ``Series`` enum member, a human name
-  (``"uf"``, ``"IPC_VAR"``), or a raw BCCh code
-  (``"F073.TCO.PRE.Z.D"``) all resolve to the same enum member, so
-  every spelling hits the SAME cache entry.
+  (``"uf"``, ``"IPC_VAR"``), or its BCCh code (``"F073.TCO.PRE.Z.D"``)
+  all resolve to the same enum member, so every spelling hits the SAME
+  cache entry.  Any other BCCh code (``"F072.CLP.EUR.N.O.D"``) passes
+  through as a plain string.
 * **Validation first** — ``desde``/``hasta`` are validated *before* the
-  cache is touched, so bad dates never trigger I/O.
-* **Errors** — unknown series raise ``KeyError`` (with the catalog
+  cache is touched, so bad or inverted dates never trigger I/O.
+* **Errors** — unknown names raise ``KeyError`` (with the catalog
   listed so the message is actionable), bad dates raise ``ValueError``,
   and API failures propagate as :exc:`~econchile.types.BcchApiError`.
 """
 
 from __future__ import annotations
 
+import re
 import unicodedata
 from pathlib import Path
 
@@ -55,37 +57,53 @@ def _fold(text: str) -> str:
     return "".join(ch for ch in decomposed if not unicodedata.combining(ch))
 
 
-def _resolve_series(series: str | Series) -> Series:
-    """Resolve a series identifier to a :class:`Series` member.
+_BCCH_CODE_RE = re.compile(r"^[A-Za-z]\d{3}(\.[A-Za-z0-9_]+)+$")
+"""Shape of a BCCh series code (``F073.TCO.PRE.Z.D``, ``G073.IPC.V12.2023.M``)."""
+
+
+def _resolve_series(series: str | Series) -> Series | str:
+    """Resolve a series identifier to a :class:`Series` member or raw code.
 
     Accepts, in order of preference:
 
     1. a ``Series`` enum member (used as-is),
-    2. a raw BCCh code string (``"F073.TCO.PRE.Z.D"``),
+    2. an indexed BCCh code string (``"F073.TCO.PRE.Z.D"`` → ``Series.USD``),
     3. a human name, matched case-insensitively against the enum member
-       name (``"uf"`` → ``Series.UF``, ``"IPC_VAR"`` → ``Series.IPC_VAR``).
+       name (``"uf"`` → ``Series.UF``, ``"IPC_VAR"`` → ``Series.IPC_VAR``),
+    4. any other BCCh-code-shaped string (``"F072.CLP.EUR.N.O.D"``), which
+       is returned unchanged as a plain ``str`` — the full BCCh catalog
+       (~30k series) works, it just isn't indexed.
 
-    Resolving to the enum member (rather than passing the raw string on)
-    guarantees that ``"uf"``, ``Series.UF`` and the code all share one
-    cache key.
+    Resolving indexed identifiers to the enum member guarantees that
+    ``"uf"``, ``Series.UF`` and the code all share one cache key.
 
     Raises:
-        KeyError: If the identifier matches nothing, with the available
-            series listed so the message is actionable.
+        KeyError: If the identifier is neither a known name nor shaped
+            like a BCCh code, with the available series listed.
     """
     if isinstance(series, Series):
         return series
     name = str(series)
     try:
-        return Series.from_code(name)  # raw BCCh code?
+        return Series.from_code(name)  # indexed BCCh code?
     except KeyError:
-        pass  # not a code — fall through to the name lookup
+        pass  # not an indexed code — fall through to the name lookup
     folded = _fold(name)
     for member in Series:
         if _fold(member.name) == folded:  # human name, case-insensitive
             return member
+    if _BCCH_CODE_RE.match(name):
+        return name  # raw BCCh code outside the indexed catalog
     available = ", ".join(member.name for member in Series)
-    raise KeyError(f"Unknown series {name!r}. Available series: {available}")
+    raise KeyError(
+        f"Unknown series {name!r}. Available series: {available} "
+        "— or pass a raw BCCh code such as 'F072.CLP.EUR.N.O.D'"
+    )
+
+
+def _code_of(resolved: Series | str) -> str:
+    """BCCh code string for a resolved identifier (enum member or raw code)."""
+    return resolved.value if isinstance(resolved, Series) else resolved
 
 
 class BcchClient:
@@ -126,7 +144,7 @@ class BcchClient:
 
         Args:
             series: A ``Series`` member, a human name (case-insensitive),
-                or a raw BCCh code string.
+                or any BCCh code string (indexed or not).
             desde: Start date, ``YYYY-MM-DD`` (required — no defaults,
                 ever; a missing window must never silently download the
                 full history).
@@ -150,7 +168,7 @@ class BcchClient:
         # Validate BEFORE any cache or network I/O: a bad date must fail
         # fast and never trigger a cache lookup or an HTTP request.
         _validate_dates(desde, hasta)
-        code = resolved.value
+        code = _code_of(resolved)
         # The key encodes exactly which query produced the data, so
         # different date ranges of the same series stay separate entries.
         key = make_key(code, desde, hasta)
@@ -168,7 +186,7 @@ class BcchClient:
         return result
 
     def search(self, keyword: str) -> list[SeriesMeta]:
-        """Search the v0.1 catalog by keyword.
+        """Search the indexed catalog (the ``Series`` enum) by keyword.
 
         Case- and accent-insensitive substring match over the series
         name, BCCh code, Spanish title, and English title.  Each field
@@ -195,7 +213,7 @@ class BcchClient:
         return matches
 
     def list_series(self) -> list[SeriesMeta]:
-        """Return metadata for every v0.1 series, in enum order."""
+        """Return metadata for every indexed series, in enum order."""
         return [member.meta() for member in Series]
 
     def clear_cache(self) -> int:
