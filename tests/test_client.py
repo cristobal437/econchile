@@ -69,6 +69,19 @@ def raise_if_called(message):
     return raiser
 
 
+def assert_same_data(served, expected):
+    """A cache-served result carries the same data as the stored one.
+
+    ``fetched_at`` is deliberately NOT compared: since v0.3 a cache-served
+    result reports when its observations were stored (the newest
+    ``fetched_at`` among them), not the fixture's fake timestamp.
+    """
+    assert served.series == expected.series
+    assert served.observations == expected.observations
+    assert served.source == expected.source
+    assert served.metadata == expected.metadata
+
+
 class TestGet:
     """client.get() — cache-first data flow."""
 
@@ -87,10 +100,9 @@ class TestGet:
 
         result = client.get(Series.USD, "2024-01-01", "2024-12-31")
 
-        # The cached result round-trips through SQLite unchanged (frozen
-        # dataclass equality: series enum, observations, fetched_at,
-        # source, metadata all preserved by Cache._reconstruct).
-        assert result == fake_series_result
+        # The cached data round-trips through SQLite unchanged: series
+        # enum, observations, source and metadata.
+        assert_same_data(result, fake_series_result)
         assert result.series is Series.USD
         assert result.observations == fake_series_result.observations
         assert result.metadata == {"series_id": "F073.TCO.PRE.Z.D"}
@@ -116,7 +128,7 @@ class TestGet:
         assert client._cache.size() == 1
         stored = client._cache.get_series(Series.USD, "2024-01-01", "2024-12-31")
         assert stored is not None
-        assert stored == fake_series_result
+        assert_same_data(stored, fake_series_result)
 
     def test_second_get_served_from_cache(self, client, fake_series_result, monkeypatch):
         """get() twice → fetcher called once, second served from cache."""
@@ -130,7 +142,8 @@ class TestGet:
         second = client.get(Series.USD, "2024-01-01", "2024-12-31")
 
         assert len(calls) == 1  # fetcher ran exactly once
-        assert first == second == fake_series_result
+        assert first == fake_series_result
+        assert_same_data(second, fake_series_result)
 
     def test_use_cache_false_bypasses(self, client, fake_series_result, monkeypatch):
         """use_cache=False → always calls fetcher, ignores cache."""

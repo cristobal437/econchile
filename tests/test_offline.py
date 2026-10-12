@@ -20,7 +20,6 @@ import requests
 # Add project root to path so we can import econchile.
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from econchile.cache import make_key
 from econchile.offline import OfflineClient
 from econchile.series_map import Series
 from econchile.types import (
@@ -86,20 +85,43 @@ def _raise_if_called(message):
 
 
 def _insert_expired_row(offline, sample_result):
-    """Insert a cache row whose expires_at is in the past (bypassing TTL).
+    """Store observations + window whose fetched_at is long past (no sleep).
 
-    Cache.set() always stamps expires_at = now + TTL, so to create an
-    EXPIRED row deterministically we write it straight into SQLite with
-    the same schema Cache uses.
+    The cache always stamps fetched_at = now, so to create EXPIRED data
+    deterministically we write it straight into SQLite with the v0.3
+    schema (observations + fetched_windows).
     """
-    key = make_key(Series.USD.value, DESDE, HASTA)
-    payload = offline._cache._serialize(sample_result)
-    with sqlite3.connect(str(offline._cache._db_path)) as conn:
+    old = "2024-01-03T10:00:00.000000+00:00"
+    code = Series.USD.value
+    conn = sqlite3.connect(str(offline._cache._db_path))
+    try:
+        for obs in sample_result.observations:
+            conn.execute(
+                "INSERT OR REPLACE INTO observations (series, date, value, fetched_at) "
+                "VALUES (?, ?, ?, ?)",
+                (code, obs.date, obs.value, old),
+            )
         conn.execute(
-            "INSERT OR REPLACE INTO cache (key, payload, fetched_at, expires_at) "
+            "INSERT OR REPLACE INTO fetched_windows (series, desde, hasta, fetched_at) "
             "VALUES (?, ?, ?, ?)",
-            (key, payload, "2024-01-03T10:00:00", "2024-01-04T10:00:00"),
+            (code, DESDE, HASTA, old),
         )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _assert_same_data(served, expected):
+    """A cache-served result carries the same data as the stored one.
+
+    ``fetched_at`` is deliberately NOT compared: since v0.3 a cache-served
+    result reports when its observations were stored, not the fixture's
+    fake timestamp.
+    """
+    assert served.series == expected.series
+    assert served.observations == expected.observations
+    assert served.source == expected.source
+    assert served.metadata == expected.metadata
 
 
 class TestApiSuccess:
@@ -127,12 +149,13 @@ class TestApiSuccess:
 
         offline.get(Series.USD, DESDE, HASTA)
 
-        # The cache now holds exactly one entry, retrievable under the
+        # The cache now holds the two observation rows (v0.3: size()
+        # counts observations, not query entries), retrievable under the
         # same key convention the client computes.
-        assert offline._cache.size() == 1
+        assert offline._cache.size() == 2
         stored = offline._cache.get_series(Series.USD, DESDE, HASTA)
         assert stored is not None
-        assert stored == sample_result
+        _assert_same_data(stored, sample_result)
 
     def test_does_not_raise(self, offline, sample_result):
         """API success never raises."""
@@ -154,8 +177,8 @@ class TestApiFailureCacheHit:
 
         result = offline.get(Series.USD, DESDE, HASTA)
 
-        # The cached result round-trips through SQLite unchanged.
-        assert result == sample_result
+        # The cached data round-trips through SQLite unchanged.
+        _assert_same_data(result, sample_result)
 
     def test_no_offline_error_raised(self, offline, sample_result):
         """Cache hit on API failure does NOT raise BcchOfflineError."""
@@ -247,10 +270,11 @@ class TestApiFailureCacheMiss:
         with pytest.raises(BcchOfflineError) as excinfo:
             offline.get(Series.USD, DESDE, HASTA)
 
-        # v0.1 decision: expired == miss (stale-serving is a v0.2 idea).
+        # Expired data (older than max_stale_age) is never served.
         assert excinfo.value.context["cache_had_data"] is False
-        # Cache.get deleted the expired row — the cache sweeps itself.
-        assert offline._cache.size() == 0
+        # v0.3: expired rows are not swept on read; purge() removes them
+        # once they pass max_purge_age.
+        assert offline._cache.size() == 2
 
     def test_error_message_is_helpful(self, offline):
         """str(error) mentions the series and suggests the cache was empty."""
@@ -366,7 +390,7 @@ class TestNonApiExceptions:
 
         result = offline.get(Series.USD, DESDE, HASTA)
 
-        assert result == sample_result
+        _assert_same_data(result, sample_result)
 
 
 class TestNoToken:
@@ -390,7 +414,7 @@ class TestNoToken:
 
         result = client.get(Series.USD, DESDE, HASTA)
 
-        assert result == sample_result
+        _assert_same_data(result, sample_result)
 
     def test_offline_error_without_token(self, tmp_path, monkeypatch):
         """No token AND no cache → BcchOfflineError (not ValueError)."""
