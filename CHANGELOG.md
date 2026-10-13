@@ -5,6 +5,67 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-10-13
+
+Observation-level cache: the cache stores individual data points now, so the
+offline fallback can serve a date window it was never asked for. This is the
+release that makes daily "up to today" cron jobs survive an API outage.
+See `specs/v0_3_cache_architecture.md` and `specs/v0_3_minor_updates.md`.
+
+### Added
+
+- Observation-level SQLite cache (schema v1): `meta`, `observations`,
+  `series_meta` and `fetched_windows` replace the single key-based `cache`
+  table. A v0.2 cache migrates automatically in one transaction (newest
+  `fetched_at` wins per series/date, and the old keys become fetched windows,
+  so repeated queries still hit). Any failure rolls back and leaves the
+  original cache intact, and a cache written by a *newer* econchile is
+  refused untouched instead of being re-migrated.
+- `SeriesResult.stale` and `SeriesResult.missing_dates`, both additive and
+  defaulted, so every existing call site keeps working. `OfflineClient` now
+  reports when it served stale data and which window boundaries had nothing
+  stored. Both are emitted by `to_dict()`.
+- `OfflineClient(strict=True)` — refuse a partial window instead of serving it.
+- `Series.CLP_EUR` (`F072.CLP.EUR.N.O.D`, CLP per EUR) and `Series.TPM_11M`
+  (`F089.TPM.TAS.14.M`, expected TPM 11 months ahead): 30 indexed series, up
+  from 28. Both codes were live-verified and their labels taken verbatim from
+  BCCh's `descripEsp`.
+- `econchile/py.typed` (PEP 561), declared in `[tool.setuptools.package-data]`
+  and shipped in both the wheel and the sdist.
+
+### Changed
+
+- **Offline fallback scope.** v0.2 could only fall back to a result for the
+  *same* `desde`/`hasta` it had been fetched with, so a cron asking for a new
+  window had nothing to fall back to. `OfflineClient` now serves any window
+  the cache covers with fresh data, and when the API is down it serves stale
+  data up to `max_stale_age` (7 days), flagging it with `stale=True` and
+  listing uncovered boundaries in `missing_dates`.
+- `BcchClient` cache reads are window-based: a hit requires fresh coverage of
+  every day requested, so the normal read path never serves a partial window.
+  Fetching 2020 and 2024 separately and then asking for 2020-2024 is a
+  deliberate miss, not a silent three-year hole.
+- `Cache.size()` counts stored observations instead of query entries, so
+  `clear_cache()` still counts data points.
+- `Cache.get/set/get_series/set_series/make_key` are deprecated: they still
+  work (they warn and delegate to the new store) but nothing in the library
+  calls them any more. They will be removed in a future release.
+
+### Removed
+
+- `converters.count_valid` and `parsers.SeriesNotFoundError` — provably unused.
+  `converters.safe_date`/`normalize_series` and the legacy `data/` files were
+  **kept**: `examples/demo.py`, the documented one-command offline demo,
+  depends on them.
+
+### Fixed
+
+- Five cache freshness tests were timing-dependent: with `ttl_seconds=0` they
+  assumed the read landed in a later clock tick than the write, but a Windows
+  clock ticks in ~15 ms steps, so a row written in the same tick ties at the
+  boundary and counts as fresh. They now age rows explicitly. This could not
+  have been caught by CI, which runs on Linux.
+
 ## [0.2.2] - 2026-09-24
 
 Packaging and CI hardening. No library behaviour changes.

@@ -17,7 +17,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from econchile.parsers import (
     ParsingError,
-    SeriesNotFoundError,
     parse_observations,
     parse_response,
 )

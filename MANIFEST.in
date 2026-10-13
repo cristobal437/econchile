@@ -15,6 +15,9 @@ exclude multi_series_sample.json
 # The indexed catalog is small and tests/test_catalog_labels.py needs it.
 include data/indexed_series.json
 
+# PEP 561 marker so type checkers recognise the package as typed.
+include econchile/py.typed
+
 # Private annotated learning notes never ship
 recursive-exclude econchile/study *
 

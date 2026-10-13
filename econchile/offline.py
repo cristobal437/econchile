@@ -33,7 +33,7 @@ from pathlib import Path
 
 import requests
 
-from econchile.cache import Cache, make_key
+from econchile.cache import Cache
 from econchile.client import _code_of, _resolve_series
 from econchile.fetcher import Fetcher, _validate_dates
 from econchile.series_map import Series
@@ -63,9 +63,11 @@ class OfflineClient:
         db_path: str | Path | None = None,
         ttl_seconds: int = 86400,
         timeout: int = 30,
+        strict: bool = False,
     ) -> None:
         self._fetcher = Fetcher(token=token, timeout=timeout)
         self._cache = Cache(db_path=db_path, ttl_seconds=ttl_seconds)
+        self._strict = strict
 
     def get(
         self,
@@ -101,33 +103,43 @@ class OfflineClient:
         # fast and never trigger a cache lookup or an HTTP request.
         _validate_dates(desde, hasta)
         code = _code_of(resolved)
-        # The key encodes exactly which query produced the data, so
-        # different date ranges of the same series stay separate entries.
-        key = make_key(code, desde, hasta)
 
         try:
             result = self._fetcher.fetch(resolved, desde, hasta)
         except (BcchApiError, requests.RequestException, OSError) as exc:
             # API failure (BcchApiError, network error, timeout): fall
             # back to the cache before giving up.
-            cached = self._cache.get(key)
-            if cached is not None:
-                return cached  # cache hit — last-known-good data
-            # Both fallback layers exhausted.  Surface a helpful error
-            # that carries the original failure so debugging is possible.
-            raise BcchOfflineError(
-                f"BCCh API failed for series {code} ({desde}..{hasta}): {exc} "
-                "— no usable data in the cache (all fallback layers "
-                "exhausted); the API may be down or rate-limiting",
-                series=code,
-                desde=desde,
-                hasta=hasta,
-                api_error=str(exc),
-                cache_had_data=False,
-            ) from exc
+            load = self._cache.load(code, desde, hasta, include_stale=True)
+            has_coverage = self._cache.covers(code, desde, hasta, include_stale=True)
+            if not load.observations and not has_coverage:
+                # Both fallback layers exhausted.  Surface a helpful error
+                # that carries the original failure so debugging is possible.
+                raise BcchOfflineError(
+                    f"BCCh API failed for series {code} ({desde}..{hasta}): {exc} "
+                    "— no usable data in the cache (all fallback layers "
+                    "exhausted); the API may be down or rate-limiting",
+                    series=code,
+                    desde=desde,
+                    hasta=hasta,
+                    api_error=str(exc),
+                    cache_had_data=False,
+                ) from exc
+            if self._strict and not has_coverage:
+                raise BcchOfflineError(
+                    f"BCCh API failed for series {code} ({desde}..{hasta}): {exc} "
+                    f"— cache is partial (missing_dates: {load.missing_dates}); "
+                    "strict=True refuses partial data",
+                    series=code,
+                    desde=desde,
+                    hasta=hasta,
+                    api_error=str(exc),
+                    cache_had_data=True,
+                    missing_dates=load.missing_dates,
+                ) from exc
+            return load
 
         # Warm the fallback: every successful fetch refreshes the cached
         # copy so the cache is ready if the API goes down next time.
-        self._cache.set(key, result)
+        self._cache.put_observations(result, desde, hasta)
 
         return result

@@ -63,6 +63,8 @@ class SeriesResult:
     fetched_at: datetime
     source: str = "api"
     metadata: dict[str, Any] = field(default_factory=dict)
+    stale: bool = False
+    missing_dates: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         """Serialise for SQLite storage / JSON cache."""
@@ -77,6 +79,8 @@ class SeriesResult:
             "fetched_at": self.fetched_at.isoformat(),
             "source": self.source,
             "metadata": self.metadata,
+            "stale": self.stale,
+            "missing_dates": list(self.missing_dates),
         }
 
 

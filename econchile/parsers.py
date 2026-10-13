@@ -29,11 +29,6 @@ class ParsingError(Exception):
         self.descripcion = descripcion
         super().__init__(f"BCCh API error {codigo}: {descripcion}")
 
-
-class SeriesNotFoundError(ParsingError):
-    """The requested series does not exist in the BCCh catalog."""
-
-
 # ─── Public API ─────────────────────────────────────────────────────────
 
 def parse_response(raw_text: str | bytes) -> dict[str, Any]:

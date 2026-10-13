@@ -24,6 +24,14 @@
     "english_title": "Euro per US dollar (EUR per USD)"
   },
   {
+    "name": "CLP_EUR",
+    "code": "F072.CLP.EUR.N.O.D",
+    "frequency": "DAILY",
+    "representation": "LEVEL",
+    "spanish_title": "Tipo de cambio nominal euro (CLP por EUR)",
+    "english_title": "Euro nominal exchange rate (CLP per EUR)"
+  },
+  {
     "name": "TCM",
     "code": "F073.TCM.IND.199502.D",
     "frequency": "DAILY",
@@ -198,6 +206,14 @@
     "representation": "LEVEL",
     "spanish_title": "Expectativa de TPM para el mes en curso (mediana, EEE)",
     "english_title": "Expected monetary policy rate, current month (median, EEE survey)"
+  },
+  {
+    "name": "TPM_11M",
+    "code": "F089.TPM.TAS.14.M",
+    "frequency": "MONTHLY",
+    "representation": "LEVEL",
+    "spanish_title": "Expectativa de TPM a 11 meses (mediana, EEE)",
+    "english_title": "Expected monetary policy rate, 11 months ahead (median, EEE survey)"
   },
   {
     "name": "IPC_EXPECTED",
