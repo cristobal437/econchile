@@ -24,7 +24,6 @@ from econchile.converters import (
     safe_float,
     safe_date,
     normalize_series,
-    count_valid,
     NULL_SENTINELS,
 )
 
@@ -265,7 +264,7 @@ class TestRealDataIntegration:
                 else:
                     values.append(None)
             normalized = normalize_series(values)
-            valid = count_valid(normalized)
+            valid = sum(1 for v in normalized if v is not None)
             pct = (valid / len(values)) * 100 if values else 0
             print(f"    {name:14s}: {valid:4d}/{len(values)} ({pct:5.1f}%)")
 

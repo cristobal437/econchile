@@ -173,3 +173,65 @@ class TestWalkthrough:
     def test_walkthrough_not_stale(self):
         nb = _read(os.path.join("examples", "econchile_walkthrough.ipynb"))
         assert "ALL 7 SERIES" not in nb
+
+
+class TestV03Packaging:
+    """v0.3: the package ships PEP 561 type information."""
+
+    def test_py_typed_marker_exists(self):
+        assert os.path.exists(os.path.join(REPO_ROOT, "econchile", "py.typed")), (
+            "econchile/py.typed is missing - type checkers cannot see the inline hints"
+        )
+
+    def test_py_typed_declared_as_package_data(self):
+        pyproject = _read("pyproject.toml")
+        assert "[tool.setuptools.package-data]" in pyproject, (
+            "py.typed must be declared or the wheel drops it"
+        )
+        # Take the block up to the next section header (a line starting with "["),
+        # not up to the first "[" - that one is the list bracket in ["py.typed"].
+        section = pyproject.split("[tool.setuptools.package-data]", 1)[1]
+        section = section.split("\n[", 1)[0]
+        assert "econchile" in section, section
+        assert "py.typed" in section, section
+
+    def test_sdist_ships_py_typed(self):
+        assert "econchile/py.typed" in _read("MANIFEST.in")
+
+    def test_readme_no_longer_claims_28_series(self):
+        assert "28 series" not in _read("README.md")
+
+
+class TestV03DeadCodeRemoved:
+    """v0.3 deleted only what was provably unused - and must not creep further.
+
+    examples/demo.py is the documented one-command offline demo (AGENTS.md).
+    It imports safe_date/normalize_series and reads the bundled data files, so
+    those are load-bearing and a future "cleanup" must not delete them.
+    """
+
+    def test_count_valid_is_gone(self):
+        from econchile import converters
+
+        assert not hasattr(converters, "count_valid")
+
+    def test_series_not_found_error_is_gone(self):
+        from econchile import parsers
+
+        assert not hasattr(parsers, "SeriesNotFoundError")
+
+    def test_safe_date_and_normalize_series_stay(self):
+        from econchile import converters
+
+        assert hasattr(converters, "safe_date")
+        assert hasattr(converters, "normalize_series")
+
+    @needs_examples
+    def test_demo_and_its_data_files_stay(self):
+        for rel in (
+            "examples/demo.py",
+            "examples/charts_demo.py",
+            "data/chile-macro.json",
+            "data/macro-chile-lean.csv",
+        ):
+            assert os.path.exists(os.path.join(REPO_ROOT, rel)), f"{rel} must stay"

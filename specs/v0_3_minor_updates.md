@@ -145,3 +145,26 @@ IDE) resolve `import econchile` types without a stubs package.
   and the deleted paths are gone.
 - Full suite must stay green: 341 existing tests, minus any tests that
   asserted on the now-deleted symbols (see execution plan for the exact edits).
+
+---
+
+## 6. Amendments made during implementation
+
+§2 scopes this phase to "remove only what is **provably unused**", and §2.1 says
+"if any call site exists, keep it and remove it from this spec's scope instead".
+A repo-wide grep before deleting found call sites the original dependent list
+missed, so those deletions moved out of scope.
+
+| # | Spec said | Done | Why |
+|---|---|---|---|
+| 1 | §2.1 delete `safe_date`, `normalize_series` | **Kept** | `examples/demo.py` imports both (line 27, used at line 82). §2.1's own rule applies: a call site exists, so it stays. |
+| 2 | §2.3 delete `data/chile-macro.json`, `data/macro-chile-lean.csv`, `data/archived/` | **Kept** | `examples/demo.py` reads the JSON *and* the CSV; `examples/charts_tutorial.ipynb` reads the CSV; `demo.py` runs today without a token. These files are the demo's inputs, not dead weight. |
+| 3 | §2.3 "known dependents" list | `examples/demo.py` and `examples/charts_tutorial.ipynb` added | The list named only `charts_demo.py` and the two test files; the biggest dependent was missing. |
+| 4 | §2.3 delete `examples/charts_demo.py` | **Kept** | Its only problem was the CSV, which is staying. It works today (writes `examples/dolar_2000_2010.png`). |
+| 5 | §2.1 delete `count_valid` | Deleted | Genuinely unused outside its own definition and one line of the test report (the report now counts inline). |
+| 6 | §2.2 delete `SeriesNotFoundError` | Deleted | Never raised, not exported in `econchile/__init__.py`; only its own definition and one test import referenced it. |
+| 7 | §3 `py.typed` | As specced | Empty `econchile/py.typed`, declared in `[tool.setuptools.package-data]`, shipped via `MANIFEST.in`. |
+| 8 | §2.4 delete 9 merged local branches | Not done | Local housekeeping only, no commit; the count is 12, not 9. Left for you to run when you want. |
+
+`tests/test_release.py::TestV03DeadCodeRemoved` now pins this: the demo and its
+data files must keep existing, and the two deleted names must stay deleted.

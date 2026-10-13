@@ -38,6 +38,9 @@ where = ["."]
 include = ["econchile*"]
 exclude = ["econchile.study*"]
 
+[tool.setuptools.package-data]
+econchile = ["py.typed"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = "test_*.py"

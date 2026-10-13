@@ -128,14 +128,3 @@ def normalize_series(values: list[Any]) -> list[float | None]:
     """
     return [safe_float(v) for v in values]
 
-
-def count_valid(values: list[float | None]) -> int:
-    """Count non-None entries in a normalized series.
-
-    Args:
-        values: Output of :func:`normalize_series` (or any list of floats/None).
-
-    Returns:
-        Number of elements that are not None.
-    """
-    return sum(1 for v in values if v is not None)
