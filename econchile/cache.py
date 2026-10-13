@@ -599,6 +599,7 @@ class Cache:
         """
         code = _series_code(series)
         cutoff = self._cutoff(include_stale)
+        fresh_cutoff = self._cutoff(False)
         try:
             conn = self._connect()
             try:
@@ -611,6 +612,26 @@ class Cache:
                     "WHERE series = ? AND desde <= ? AND hasta >= ? AND fetched_at >= ?",
                     (code, hasta, desde, cutoff),
                 ).fetchone()[0]
+                desde_window = conn.execute(
+                    "SELECT 1 FROM fetched_windows "
+                    "WHERE series = ? AND desde <= ? AND hasta >= ? AND fetched_at >= ?",
+                    (code, desde, desde, cutoff),
+                ).fetchone()
+                hasta_window = conn.execute(
+                    "SELECT 1 FROM fetched_windows "
+                    "WHERE series = ? AND desde <= ? AND hasta >= ? AND fetched_at >= ?",
+                    (code, hasta, hasta, cutoff),
+                ).fetchone()
+                leading_obs = conn.execute(
+                    "SELECT 1 FROM observations "
+                    "WHERE series = ? AND date <= ? AND fetched_at >= ? LIMIT 1",
+                    (code, desde, cutoff),
+                ).fetchone()
+                trailing_obs = conn.execute(
+                    "SELECT 1 FROM observations "
+                    "WHERE series = ? AND date >= ? AND fetched_at >= ? LIMIT 1",
+                    (code, hasta, cutoff),
+                ).fetchone()
             finally:
                 self._close(conn)
         except sqlite3.Error as exc:
@@ -625,6 +646,19 @@ class Cache:
         else:
             fetched_at = datetime.now(timezone.utc)
 
+        if rows:
+            stale = any(r[2] < fresh_cutoff for r in rows)
+        elif newest_window:
+            stale = newest_window < fresh_cutoff
+        else:
+            stale = False
+
+        missing_dates: list[str] = []
+        if desde_window is None and leading_obs is None:
+            missing_dates.append(desde)
+        if hasta_window is None and trailing_obs is None:
+            missing_dates.append(hasta)
+
         try:
             series_obj: Series | str = Series.from_code(code)
         except KeyError:
@@ -636,6 +670,8 @@ class Cache:
             fetched_at=fetched_at,
             source="api",
             metadata=json.loads(meta_row[0]) if meta_row else {},
+            stale=stale,
+            missing_dates=missing_dates,
         )
 
     # ── Cache management ──────────────────────────────────────────────

@@ -87,10 +87,8 @@ class TestGet:
 
     def test_cache_hit_skips_fetcher(self, client, fake_series_result, monkeypatch):
         """Cached data returned WITHOUT calling fetcher (fetcher raises if called)."""
-        # Seed the cache with the SAME key the client will compute:
-        # make_key(Series.USD.value, desde, hasta).  set_series builds
-        # exactly that key from the same components.
-        client._cache.set_series(Series.USD, "2024-01-01", "2024-12-31", fake_series_result)
+        # Seed the cache with the same series and window the client asks for.
+        client._cache.put_observations(fake_series_result, "2024-01-01", "2024-12-31")
 
         # If the fetcher is ever called, the test fails loudly.
         monkeypatch.setattr(
@@ -123,11 +121,11 @@ class TestGet:
         assert calls[0][2] == "2024-12-31"
         assert result == fake_series_result
 
-        # The fresh result was stored: the cache now has exactly one
-        # entry, retrievable under the client's key convention.
+        # The fresh result was stored: one observation row, and the window
+        # is recorded so the next identical query is a hit.
         assert client._cache.size() == 1
-        stored = client._cache.get_series(Series.USD, "2024-01-01", "2024-12-31")
-        assert stored is not None
+        assert client._cache.covers(Series.USD, "2024-01-01", "2024-12-31") is True
+        stored = client._cache.load(Series.USD, "2024-01-01", "2024-12-31")
         assert_same_data(stored, fake_series_result)
 
     def test_second_get_served_from_cache(self, client, fake_series_result, monkeypatch):
@@ -289,8 +287,9 @@ class TestSeriesResolution:
         assert calls[0][0] == code and not isinstance(calls[0][0], Series)
         assert result.series == code
         # Cached under the raw code: a second call never reaches the fetcher.
-        stored = client._cache.get_series(code, "2024-01-01", "2024-01-31")
-        assert stored is not None and stored.series == code
+        assert client._cache.covers(code, "2024-01-01", "2024-01-31") is True
+        stored = client._cache.load(code, "2024-01-01", "2024-01-31")
+        assert stored.series == code
         client.get(code, "2024-01-01", "2024-01-31")
         assert len(calls) == 1
 
@@ -402,3 +401,163 @@ def _result_for(series):
         source="api",
         metadata={"series_id": series.value},
     )
+
+
+# ─── v0.3: window-based cache-first semantics (cache spec §5.1) ──────────
+
+def _usd_result(points):
+    """A USD SeriesResult from ``[(date, value), ...]``."""
+    return SeriesResult(
+        series=Series.USD,
+        observations=[Observation(d, v) for d, v in points],
+        fetched_at=datetime(2024, 1, 3, 10, 0, 0),
+        source="api",
+        metadata={"series_id": Series.USD.value},
+    )
+
+
+class TestCacheFirstWindows:
+    """BcchClient serves ONLY fresh, fully covered windows from the cache."""
+
+    def test_full_fresh_coverage_served_without_network(self, client, monkeypatch):
+        stored = _usd_result([("2024-01-01", 1.0), ("2024-12-31", 2.0)])
+        client._cache.put_observations(stored, "2024-01-01", "2024-12-31")
+        monkeypatch.setattr(
+            "econchile.fetcher.Fetcher.get_series",
+            raise_if_called("fetcher must not be called on a cache hit"),
+        )
+
+        result = client.get(Series.USD, "2024-01-01", "2024-12-31")
+
+        assert_same_data(result, stored)
+        assert result.stale is False
+        assert result.missing_dates == []
+        assert result.fetched_at.tzinfo is not None  # time of storage, aware UTC
+
+    def test_sub_window_served_and_filtered(self, client, monkeypatch):
+        stored = _usd_result([("2024-01-02", 1.0), ("2024-06-03", 2.0), ("2024-12-30", 3.0)])
+        client._cache.put_observations(stored, "2024-01-01", "2024-12-31")
+        monkeypatch.setattr(
+            "econchile.fetcher.Fetcher.get_series",
+            raise_if_called("a sub-window of a fresh window is a hit"),
+        )
+
+        result = client.get(Series.USD, "2024-06-01", "2024-06-30")
+
+        assert result.observations == [Observation("2024-06-03", 2.0)]
+
+    def test_monthly_window_ending_month_end_hits(self, client, monkeypatch):
+        """IPC is dated on the 1st: a repeated 2024-01-01→2024-12-31 query hits."""
+        ipc = SeriesResult(
+            series=Series.IPC_VAR,
+            observations=[Observation(f"2024-{m:02d}-01", 0.3) for m in range(1, 13)],
+            fetched_at=datetime(2025, 1, 10),
+            source="api",
+            metadata={},
+        )
+        calls = []
+        monkeypatch.setattr(
+            "econchile.fetcher.Fetcher.get_series", make_fake_fetcher(ipc, calls)
+        )
+
+        client.get(Series.IPC_VAR, "2024-01-01", "2024-12-31")
+        again = client.get(Series.IPC_VAR, "2024-01-01", "2024-12-31")
+
+        assert len(calls) == 1
+        assert len(again.observations) == 12
+
+    def test_partial_coverage_falls_through_to_api(self, client, monkeypatch):
+        """Never serve a partial window: the API is asked for the FULL window."""
+        client._cache.put_observations(
+            _usd_result([("2024-01-02", 1.0)]), "2024-01-01", "2024-06-30"
+        )
+        fresh = _usd_result([("2024-01-02", 1.0), ("2024-12-30", 2.0)])
+        calls = []
+        monkeypatch.setattr(
+            "econchile.fetcher.Fetcher.get_series", make_fake_fetcher(fresh, calls)
+        )
+
+        result = client.get(Series.USD, "2024-01-01", "2024-12-31")
+
+        assert calls == [(Series.USD, "2024-01-01", "2024-12-31")]
+        assert result == fresh
+        assert client._cache.covers(Series.USD.value, "2024-01-01", "2024-12-31") is True
+
+    def test_gap_between_windows_falls_through(self, client, monkeypatch):
+        """Fetched 2020 and 2024 separately: 2020→2024 goes to the API."""
+        client._cache.put_observations(_usd_result([("2020-01-02", 1.0)]), "2020-01-01", "2020-12-31")
+        client._cache.put_observations(_usd_result([("2024-12-30", 2.0)]), "2024-01-01", "2024-12-31")
+        calls = []
+        monkeypatch.setattr(
+            "econchile.fetcher.Fetcher.get_series",
+            make_fake_fetcher(_usd_result([("2022-06-01", 3.0)]), calls),
+        )
+
+        client.get(Series.USD, "2020-01-01", "2024-12-31")
+
+        assert len(calls) == 1
+
+    def test_stale_window_goes_to_api_and_is_refreshed(self, tmp_path, monkeypatch):
+        """ttl_seconds=0: stored data is stale at once, so get() hits the API."""
+        client = BcchClient(token="test-token", db_path=tmp_path / "ttl0.db", ttl_seconds=0)
+        client._cache.put_observations(
+            _usd_result([("2024-01-02", 1.0)]), "2024-01-01", "2024-01-31"
+        )
+        fresh = _usd_result([("2024-01-02", 1.5)])
+        calls = []
+        monkeypatch.setattr(
+            "econchile.fetcher.Fetcher.get_series", make_fake_fetcher(fresh, calls)
+        )
+
+        result = client.get(Series.USD, "2024-01-01", "2024-01-31")
+
+        assert len(calls) == 1
+        assert result == fresh
+        # The refreshed value overwrote the old one in the store.
+        assert client._cache.get_observations(
+            Series.USD.value, "2024-01-01", "2024-01-31", include_stale=True
+        ) == [Observation("2024-01-02", 1.5)]
+
+    def test_miss_stores_observations_and_window(self, client, fake_series_result, monkeypatch):
+        calls = []
+        monkeypatch.setattr(
+            "econchile.fetcher.Fetcher.get_series",
+            make_fake_fetcher(fake_series_result, calls),
+        )
+
+        result = client.get(Series.USD, "2024-01-01", "2024-12-31")
+
+        assert result == fake_series_result  # live result returned as-is
+        assert result.stale is False and result.missing_dates == []
+        assert client._cache.size() == 1
+        assert client._cache.covers(Series.USD.value, "2024-01-01", "2024-12-31") is True
+
+    def test_use_cache_false_bypasses_read_and_write(self, client, fake_series_result, monkeypatch):
+        calls = []
+        monkeypatch.setattr(
+            "econchile.fetcher.Fetcher.get_series",
+            make_fake_fetcher(fake_series_result, calls),
+        )
+        for method in ("covers", "load", "get_observations", "put_observations"):
+            monkeypatch.setattr(
+                client._cache, method,
+                raise_if_called(f"cache.{method} must not run with use_cache=False"),
+            )
+
+        client.get(Series.USD, "2024-01-01", "2024-12-31", use_cache=False)
+
+        assert len(calls) == 1
+
+    def test_no_deprecated_shims_used(self, client, fake_series_result, monkeypatch):
+        import warnings
+
+        calls = []
+        monkeypatch.setattr(
+            "econchile.fetcher.Fetcher.get_series",
+            make_fake_fetcher(fake_series_result, calls),
+        )
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", DeprecationWarning)
+            client.get(Series.USD, "2024-01-01", "2024-12-31")  # miss
+            client.get(Series.USD, "2024-01-01", "2024-12-31")  # hit
+        assert len(calls) == 1

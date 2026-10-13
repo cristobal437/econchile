@@ -360,3 +360,50 @@ class TestSeriesResult:
             {"date": "2024-01-01", "value": 897.68},
             {"date": "2024-01-02", "value": 901.13},
         ]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# v0.3: SeriesResult.stale / missing_dates (cache spec §7)
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestSeriesResultV03Flags:
+    """Additive, defaulted fields: every v0.2 call site keeps working."""
+
+    def _five_args(self):
+        from datetime import datetime, timezone
+
+        return SeriesResult(
+            series="F073.TCO.PRE.Z.D",
+            observations=[Observation("2024-01-02", 901.13)],
+            fetched_at=datetime(2024, 1, 3, tzinfo=timezone.utc),
+            source="api",
+            metadata={},
+        )
+
+    def test_defaults(self):
+        result = self._five_args()
+        assert result.stale is False
+        assert result.missing_dates == []
+
+    def test_default_list_not_shared(self):
+        assert self._five_args().missing_dates is not self._five_args().missing_dates
+
+    def test_explicit_values(self):
+        from dataclasses import replace
+
+        result = replace(self._five_args(), stale=True, missing_dates=["2024-01-01"])
+        assert result.stale is True
+        assert result.missing_dates == ["2024-01-01"]
+
+    def test_still_frozen(self):
+        with pytest.raises(FrozenInstanceError):
+            self._five_args().stale = True
+
+    def test_to_dict_carries_flags(self):
+        """Exported results keep the stale/partial signal."""
+        from dataclasses import replace
+
+        d = replace(self._five_args(), stale=True, missing_dates=["2024-01-01"]).to_dict()
+        assert d["stale"] is True
+        assert d["missing_dates"] == ["2024-01-01"]
+        assert self._five_args().to_dict()["missing_dates"] == []

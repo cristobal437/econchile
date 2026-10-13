@@ -39,7 +39,7 @@ import re
 import unicodedata
 from pathlib import Path
 
-from econchile.cache import Cache, make_key
+from econchile.cache import Cache
 from econchile.fetcher import Fetcher, _validate_dates
 from econchile.series_map import Series
 from econchile.types import SeriesMeta, SeriesResult
@@ -170,21 +170,16 @@ class BcchClient:
         # fast and never trigger a cache lookup or an HTTP request.
         _validate_dates(desde, hasta)
         code = _code_of(resolved)
-        # The key encodes exactly which query produced the data, so
-        # different date ranges of the same series stay separate entries.
-        key = make_key(code, desde, hasta)
 
         if use_cache:
-            cached = self._cache.get(key)
-            if cached is not None:
-                return cached  # cache-first: within TTL, no network call
+            if self._cache.covers(code, desde, hasta):
+                return self._cache.load(code, desde, hasta)
 
-        result = self._fetcher.get_series(resolved, desde, hasta)
+            result = self._fetcher.get_series(resolved, desde, hasta)
+            self._cache.put_observations(result, desde, hasta)
+            return result
 
-        if use_cache:
-            self._cache.set(key, result)  # store for next time
-
-        return result
+        return self._fetcher.get_series(resolved, desde, hasta)
 
     def search(self, keyword: str) -> list[SeriesMeta]:
         """Search the indexed catalog (the ``Series`` enum) by keyword.

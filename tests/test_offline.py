@@ -153,8 +153,8 @@ class TestApiSuccess:
         # counts observations, not query entries), retrievable under the
         # same key convention the client computes.
         assert offline._cache.size() == 2
-        stored = offline._cache.get_series(Series.USD, DESDE, HASTA)
-        assert stored is not None
+        assert offline._cache.covers(Series.USD, DESDE, HASTA) is True
+        stored = offline._cache.load(Series.USD, DESDE, HASTA)
         _assert_same_data(stored, sample_result)
 
     def test_does_not_raise(self, offline, sample_result):
@@ -172,7 +172,7 @@ class TestApiFailureCacheHit:
 
     def test_returns_cached_result(self, offline, sample_result):
         """When API fails but cache has the key, get() returns cached data."""
-        offline._cache.set_series(Series.USD, DESDE, HASTA, sample_result)
+        offline._cache.put_observations(sample_result, DESDE, HASTA)
         offline.stub_error = BcchApiError("BCCh API is down")
 
         result = offline.get(Series.USD, DESDE, HASTA)
@@ -182,7 +182,7 @@ class TestApiFailureCacheHit:
 
     def test_no_offline_error_raised(self, offline, sample_result):
         """Cache hit on API failure does NOT raise BcchOfflineError."""
-        offline._cache.set_series(Series.USD, DESDE, HASTA, sample_result)
+        offline._cache.put_observations(sample_result, DESDE, HASTA)
         offline.stub_error = BcchApiError("BCCh API is down")
 
         result = offline.get(Series.USD, DESDE, HASTA)
@@ -192,7 +192,7 @@ class TestApiFailureCacheHit:
 
     def test_result_usable(self, offline, sample_result):
         """Cached result is a valid SeriesResult with observations."""
-        offline._cache.set_series(Series.USD, DESDE, HASTA, sample_result)
+        offline._cache.put_observations(sample_result, DESDE, HASTA)
         offline.stub_error = BcchApiError("BCCh API is down")
 
         result = offline.get(Series.USD, DESDE, HASTA)
@@ -338,7 +338,7 @@ class TestSeriesResolution:
 
         assert result.series == code
         # Warm fallback stored under the raw code.
-        assert offline._cache.get_series(code, DESDE, HASTA) is not None
+        assert offline._cache.covers(code, DESDE, HASTA) is True
 
 
 class TestValidation:
@@ -377,7 +377,7 @@ class TestNonApiExceptions:
         The fallback exists for API failures only — real bugs must
         propagate so they are never hidden by stale-cache serving.
         """
-        offline._cache.set_series(Series.USD, DESDE, HASTA, sample_result)
+        offline._cache.put_observations(sample_result, DESDE, HASTA)
         offline.stub_error = ValueError("programming bug — must not be masked")
 
         with pytest.raises(ValueError):
@@ -385,7 +385,7 @@ class TestNonApiExceptions:
 
     def test_network_error_still_falls_back(self, offline, sample_result):
         """requests network errors still trigger the cache fallback."""
-        offline._cache.set_series(Series.USD, DESDE, HASTA, sample_result)
+        offline._cache.put_observations(sample_result, DESDE, HASTA)
         offline.stub_error = requests.ConnectionError("connection refused")
 
         result = offline.get(Series.USD, DESDE, HASTA)
@@ -410,7 +410,7 @@ class TestNoToken:
         """Cached data is served with no token configured."""
         monkeypatch.delenv("BCCH_TOKEN", raising=False)
         client = OfflineClient(token=None, db_path=tmp_path / "no_token.db")
-        client._cache.set_series(Series.USD, DESDE, HASTA, sample_result)
+        client._cache.put_observations(sample_result, DESDE, HASTA)
 
         result = client.get(Series.USD, DESDE, HASTA)
 
@@ -423,3 +423,266 @@ class TestNoToken:
 
         with pytest.raises(BcchOfflineError):
             client.get(Series.USD, DESDE, HASTA)
+
+
+# ─── v0.3: stale / partial serving (specs/v0_3_cache_architecture.md §5.2) ───
+
+def _set_age(offline, series_code, **delta):
+    """Make every stored row of ``series_code`` look ``delta`` old (no sleep)."""
+    from datetime import datetime, timedelta, timezone
+
+    stamp = (datetime.now(timezone.utc) - timedelta(**delta)).isoformat(timespec="microseconds")
+    conn = sqlite3.connect(str(offline._cache._db_path))
+    try:
+        conn.execute(
+            "UPDATE observations SET fetched_at = ? WHERE series = ?", (stamp, series_code)
+        )
+        conn.execute(
+            "UPDATE fetched_windows SET fetched_at = ? WHERE series = ?", (stamp, series_code)
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _usd(points):
+    """A USD SeriesResult from ``[(date, value), ...]``."""
+    from datetime import datetime, timezone
+
+    return SeriesResult(
+        series=Series.USD,
+        observations=[Observation(d, v) for d, v in points],
+        fetched_at=datetime.now(timezone.utc),
+        source="api",
+        metadata={"series_id": Series.USD.value},
+    )
+
+
+@pytest.fixture
+def strict_offline(tmp_path, monkeypatch):
+    """OfflineClient(strict=True) with a stubbed, failing fetcher."""
+    client = OfflineClient(
+        token="test-token", db_path=tmp_path / "strict_test.db", strict=True
+    )
+    client.stub_error = BcchApiError("BCCh API is down")
+
+    def fake_fetch(self, series, desde, hasta):
+        raise client.stub_error
+
+    monkeypatch.setattr("econchile.fetcher.Fetcher.fetch", fake_fetch)
+    return client
+
+
+class TestFreshResultFlags:
+    """A live API result is never stale and never partial."""
+
+    def test_api_result_flags(self, offline, sample_result):
+        offline.stub_result = sample_result
+        result = offline.get(Series.USD, DESDE, HASTA)
+        assert result.stale is False
+        assert result.missing_dates == []
+
+    def test_api_success_records_window(self, offline, sample_result):
+        """The requested window is stored, so the fallback knows it was asked."""
+        offline.stub_result = sample_result
+        offline.get(Series.USD, DESDE, HASTA)
+        assert offline._cache.covers(Series.USD.value, DESDE, HASTA) is True
+
+
+class TestStaleServing:
+    """API down: fresh, else stale (≤ max_stale_age) observations are served."""
+
+    def test_fresh_cache_served_not_stale(self, offline, sample_result):
+        offline._cache.put_observations(sample_result, DESDE, HASTA)
+        offline.stub_error = BcchApiError("BCCh API is down")
+
+        result = offline.get(Series.USD, DESDE, HASTA)
+
+        _assert_same_data(result, sample_result)
+        assert result.stale is False
+        assert result.missing_dates == []
+
+    def test_data_older_than_ttl_served_as_stale(self, offline, sample_result):
+        offline._cache.put_observations(sample_result, DESDE, HASTA)
+        _set_age(offline, Series.USD.value, days=2)
+        offline.stub_error = BcchApiError("BCCh API is down")
+
+        result = offline.get(Series.USD, DESDE, HASTA)
+
+        assert result.observations == sample_result.observations
+        assert result.stale is True
+        assert result.missing_dates == []
+        assert result.source == "api"  # data still originates from the API
+
+    def test_mixed_fresh_and_stale_is_stale(self, offline):
+        offline._cache.put_observations(_usd([("2024-01-02", 1.0)]), DESDE, "2024-06-30")
+        _set_age(offline, Series.USD.value, days=2)
+        offline._cache.put_observations(_usd([("2024-07-01", 2.0)]), "2024-07-01", HASTA)
+        offline.stub_error = BcchApiError("BCCh API is down")
+
+        result = offline.get(Series.USD, DESDE, HASTA)
+
+        assert [o.date for o in result.observations] == ["2024-01-02", "2024-07-01"]
+        assert result.stale is True
+
+    def test_expired_data_not_served(self, offline, sample_result):
+        offline._cache.put_observations(sample_result, DESDE, HASTA)
+        _set_age(offline, Series.USD.value, days=8)
+        offline.stub_error = BcchApiError("BCCh API is down")
+
+        with pytest.raises(BcchOfflineError) as excinfo:
+            offline.get(Series.USD, DESDE, HASTA)
+        assert excinfo.value.context["cache_had_data"] is False
+
+    def test_covered_window_without_observations_served_empty(self, offline):
+        """A fetched window with nothing published (a weekend) is an answer, not a miss."""
+        offline._cache.put_observations(_usd([]), "2024-01-06", "2024-01-07")
+        offline.stub_error = BcchApiError("BCCh API is down")
+
+        result = offline.get(Series.USD, "2024-01-06", "2024-01-07")
+
+        assert result.observations == []
+        assert result.missing_dates == []
+
+    def test_metadata_preserved_on_fallback(self, offline, sample_result):
+        offline._cache.put_observations(sample_result, DESDE, HASTA)
+        _set_age(offline, Series.USD.value, days=2)
+        offline.stub_error = BcchApiError("BCCh API is down")
+
+        assert offline.get(Series.USD, DESDE, HASTA).metadata == sample_result.metadata
+
+
+class TestPartialServing:
+    """API down: a partially covered window is served with missing_dates."""
+
+    def test_leading_gap(self, offline):
+        offline._cache.put_observations(
+            _usd([("2024-03-01", 1.0), ("2024-12-31", 2.0)]), "2024-03-01", HASTA
+        )
+        offline.stub_error = BcchApiError("BCCh API is down")
+
+        result = offline.get(Series.USD, DESDE, HASTA)
+
+        assert result.missing_dates == [DESDE]
+        assert [o.date for o in result.observations] == ["2024-03-01", "2024-12-31"]
+
+    def test_trailing_gap(self, offline):
+        offline._cache.put_observations(
+            _usd([("2024-01-01", 1.0), ("2024-06-28", 2.0)]), DESDE, "2024-06-30"
+        )
+        offline.stub_error = BcchApiError("BCCh API is down")
+
+        assert offline.get(Series.USD, DESDE, HASTA).missing_dates == [HASTA]
+
+    def test_both_gaps(self, offline):
+        offline._cache.put_observations(
+            _usd([("2024-03-01", 1.0), ("2024-06-28", 2.0)]), "2024-03-01", "2024-06-30"
+        )
+        offline.stub_error = BcchApiError("BCCh API is down")
+
+        assert offline.get(Series.USD, DESDE, HASTA).missing_dates == [DESDE, HASTA]
+
+    def test_nd_rows_served_and_not_missing(self, offline):
+        """An ND (None) observation is coverage: served, never in missing_dates."""
+        offline._cache.put_observations(
+            _usd([(DESDE, None), ("2024-01-02", 901.13)]), DESDE, HASTA
+        )
+        offline.stub_error = BcchApiError("BCCh API is down")
+
+        result = offline.get(Series.USD, DESDE, HASTA)
+
+        assert result.observations[0] == Observation(DESDE, None)
+        assert result.missing_dates == []
+
+    def test_bound_covered_by_observation_beyond_it(self, offline):
+        """Observations on/beyond both bounds cover them even without a window."""
+        offline._cache.put_observations(
+            _usd([("2023-12-29", 1.0), ("2024-06-28", 2.0), ("2025-01-02", 3.0)])
+        )
+        offline.stub_error = BcchApiError("BCCh API is down")
+
+        result = offline.get(Series.USD, DESDE, HASTA)
+
+        assert result.missing_dates == []
+        assert [o.date for o in result.observations] == ["2024-06-28"]
+
+    def test_cron_with_new_hasta_still_served(self, offline):
+        """The headline v0.3 case: yesterday's cron data serves today's new window."""
+        offline._cache.put_observations(
+            _usd([("2020-01-02", 1.0), ("2024-06-28", 2.0)]), "2020-01-01", "2024-06-30"
+        )
+        offline.stub_error = requests.ConnectionError("connection refused")
+
+        result = offline.get(Series.USD, "2020-01-01", "2024-07-01")
+
+        assert [o.date for o in result.observations] == ["2020-01-02", "2024-06-28"]
+        assert result.missing_dates == ["2024-07-01"]
+
+    def test_interior_gap_not_listed(self, offline):
+        """Interior holes are not enumerated (documented limitation); strict=True refuses them."""
+        offline._cache.put_observations(_usd([("2024-01-02", 1.0)]), DESDE, "2024-03-31")
+        offline._cache.put_observations(_usd([("2024-12-30", 2.0)]), "2024-10-01", HASTA)
+        offline.stub_error = BcchApiError("BCCh API is down")
+
+        result = offline.get(Series.USD, DESDE, HASTA)
+
+        assert result.missing_dates == []
+        assert [o.date for o in result.observations] == ["2024-01-02", "2024-12-30"]
+
+
+class TestStrictMode:
+    """strict=True refuses partial windows instead of serving them."""
+
+    def test_strict_defaults_to_false(self):
+        import inspect
+
+        param = inspect.signature(OfflineClient.__init__).parameters["strict"]
+        assert param.default is False
+
+    def test_strict_partial_raises(self, strict_offline):
+        strict_offline._cache.put_observations(
+            _usd([("2024-03-01", 1.0)]), "2024-03-01", HASTA
+        )
+
+        with pytest.raises(BcchOfflineError) as excinfo:
+            strict_offline.get(Series.USD, DESDE, HASTA)
+
+        assert excinfo.value.context["cache_had_data"] is True
+        assert excinfo.value.context["missing_dates"] == [DESDE]
+
+    def test_strict_interior_gap_raises(self, strict_offline):
+        strict_offline._cache.put_observations(_usd([("2024-01-02", 1.0)]), DESDE, "2024-03-31")
+        strict_offline._cache.put_observations(_usd([("2024-12-30", 2.0)]), "2024-10-01", HASTA)
+
+        with pytest.raises(BcchOfflineError):
+            strict_offline.get(Series.USD, DESDE, HASTA)
+
+    def test_strict_full_coverage_served(self, strict_offline, sample_result):
+        strict_offline._cache.put_observations(sample_result, DESDE, HASTA)
+        _set_age(strict_offline, Series.USD.value, days=2)
+
+        result = strict_offline.get(Series.USD, DESDE, HASTA)
+
+        assert result.observations == sample_result.observations
+        assert result.stale is True
+        assert result.missing_dates == []
+
+    def test_strict_empty_cache_still_cache_had_data_false(self, strict_offline):
+        with pytest.raises(BcchOfflineError) as excinfo:
+            strict_offline.get(Series.USD, DESDE, HASTA)
+        assert excinfo.value.context["cache_had_data"] is False
+
+
+class TestNoDeprecatedCalls:
+    """Phase 2: the client no longer goes through the deprecated key shims."""
+
+    def test_no_deprecation_warning(self, offline, sample_result):
+        import warnings
+
+        offline.stub_result = sample_result
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", DeprecationWarning)
+            offline.get(Series.USD, DESDE, HASTA)  # success path
+            offline.stub_result = None
+            offline.stub_error = BcchApiError("BCCh API is down")
+            offline.get(Series.USD, DESDE, HASTA)  # fallback path

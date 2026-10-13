@@ -243,8 +243,13 @@ quarterly windows ending on a month end (see §2, §12).
      fallback, step 3.
 3. Read usable observations: fresh + stale (exclude expired), in
    `[desde, hasta]`.
-   - **None** ⇒ `BcchOfflineError` (unchanged shape, `cache_had_data=False`).
+   - **No usable observations AND no usable window covers the range** ⇒
+     `BcchOfflineError` (unchanged shape, `cache_had_data=False`).
    - **Some** ⇒ return with:
+     - an empty observation list is a valid answer when a usable window
+       covers every day of `[desde, hasta]` (e.g. a weekend for a daily
+       series: the window was fetched and BCCh published nothing) — see
+       §12 amendment 9.
      - `stale = any(served observation is stale)`
      - `missing_dates` per §5.3
      - `source = "api"` (data ultimately originates from the API — see §7)
@@ -386,3 +391,5 @@ with the reason. The sections above already reflect them.
 | 6 | `missing_dates == ["desde"]` (loose wording) | The ISO date itself, e.g. `["2024-01-01"]` (§5.3) | The field is typed "sorted, ISO dates". |
 | 7 | Migration skips only JSON-decode failures | Skips any row that cannot be decoded into series + observations + a parseable `fetched_at` (§3.2) | A row with valid JSON but no `observations` key would otherwise crash the whole migration. |
 | 8 | Unknown `schema_version` unspecified | Raise `BcchCacheError`, touch nothing (§3.1) | A cache written by a newer econchile must not be "re-migrated" by an older one. |
+| 9 | Fallback: "**None** ⇒ `BcchOfflineError`" keyed on observations alone | Error only when no usable observations AND no usable covering window; a covered empty window is served empty (§5.2) | A weekend/holiday window is a real, fetched answer with no published values. Erroring on it would send a cron job down the "no data" path for a range that was in fact answered, and `strict=True` would refuse it too. |
+| 10 | `to_dict()` unspecified | `to_dict()` also emits `stale` and `missing_dates` (§7) | The flags are the point of the offline path; dropping them on export loses the partial/stale signal for anyone serialising results. |

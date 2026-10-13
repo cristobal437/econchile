@@ -526,3 +526,68 @@ class TestErrors:
             cache.put_observations(sample_result, "2024-01-01", "2024-01-02")
         assert _count(db, "observations") == 0
         assert _count(db, "series_meta") == 0
+
+
+# ─── v0.3 phase 2: load() flags (spec §5.2, §5.3, §6) ──────────────────
+
+class TestLoadFlags:
+    """load() reports stale and boundary gaps for what it serves."""
+
+    def test_fresh_full_window(self, cache, sample_result):
+        cache.put_observations(sample_result, "2024-01-01", "2024-01-31")
+        result = cache.load(USD, "2024-01-01", "2024-01-31")
+        assert result.stale is False
+        assert result.missing_dates == []
+
+    def test_stale_rows_flagged(self, cache, db, sample_result):
+        cache.put_observations(sample_result, "2024-01-01", "2024-01-31")
+        _set_age(db, USD, days=2)
+        result = cache.load(USD, "2024-01-01", "2024-01-31", include_stale=True)
+        assert len(result.observations) == 2
+        assert result.stale is True
+
+    def test_stale_excluded_without_include_stale(self, cache, db, sample_result):
+        cache.put_observations(sample_result, "2024-01-01", "2024-01-31")
+        _set_age(db, USD, days=2)
+        result = cache.load(USD, "2024-01-01", "2024-01-31")
+        assert result.observations == []
+        assert result.missing_dates == ["2024-01-01", "2024-01-31"]
+
+    def test_leading_and_trailing_gaps(self, cache):
+        cache.put_observations(_result(Series.USD, [("2024-01-15", 1.0)]), "2024-01-10", "2024-01-20")
+        assert cache.load(USD, "2024-01-01", "2024-01-31").missing_dates == [
+            "2024-01-01", "2024-01-31",
+        ]
+        assert cache.load(USD, "2024-01-10", "2024-01-31").missing_dates == ["2024-01-31"]
+        assert cache.load(USD, "2024-01-01", "2024-01-20").missing_dates == ["2024-01-01"]
+
+    def test_observation_outside_window_covers_bound(self, cache):
+        """No window at all, but data on/beyond both bounds: nothing missing."""
+        cache.put_observations(
+            _result(Series.USD, [("2023-12-29", 1.0), ("2024-01-15", 2.0), ("2024-02-01", 3.0)])
+        )
+        result = cache.load(USD, "2024-01-01", "2024-01-31")
+        assert result.missing_dates == []
+        assert [o.date for o in result.observations] == ["2024-01-15"]
+
+    def test_nd_row_on_bound_is_coverage(self, cache):
+        cache.put_observations(_result(Series.USD, [("2024-01-01", None), ("2024-01-31", None)]))
+        result = cache.load(USD, "2024-01-01", "2024-01-31")
+        assert result.missing_dates == []
+        assert result.observations == [Observation("2024-01-01", None), Observation("2024-01-31", None)]
+
+    def test_expired_rows_never_count(self, cache, db, sample_result):
+        cache.put_observations(sample_result, "2024-01-01", "2024-01-31")
+        _set_age(db, USD, days=8)
+        result = cache.load(USD, "2024-01-01", "2024-01-31", include_stale=True)
+        assert result.observations == []
+        assert result.missing_dates == ["2024-01-01", "2024-01-31"]
+
+    def test_empty_covered_window_stale_follows_window(self, cache, db):
+        """No rows to judge by: staleness comes from the window itself."""
+        cache.put_observations(_result(Series.USD, []), "2024-01-06", "2024-01-07")
+        assert cache.load(USD, "2024-01-06", "2024-01-07").stale is False
+        _set_age(db, USD, days=2)
+        result = cache.load(USD, "2024-01-06", "2024-01-07", include_stale=True)
+        assert result.stale is True
+        assert result.missing_dates == []
