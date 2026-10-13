@@ -76,7 +76,14 @@ def _iso_ago(**delta):
 
 
 def _set_age(db, series, **delta):
-    """Make every stored row of ``series`` look ``delta`` old (no sleep)."""
+    """Make every stored row of ``series`` look ``delta`` old (no sleep).
+
+    Aging explicitly is mandatory in freshness tests, even when the cache uses
+    ``ttl_seconds=0``: this host's clock ticks coarsely (~15 ms), so a row
+    written in the same tick as the read ties at ``now - ttl_seconds`` and is
+    FRESH under the spec's ``now - F <= ttl_seconds`` rule.  Without an explicit
+    age such a test passes or fails depending on where the tick boundary lands.
+    """
     stamp = _iso_ago(**delta)
     conn = sqlite3.connect(str(db))
     try:
@@ -157,7 +164,7 @@ class TestPutGetObservations:
 
     def test_raw_code_series(self, cache):
         """A code outside the indexed enum is stored and read under the raw code."""
-        code = "F072.CLP.EUR.N.O.D"
+        code = "F073.TCO.PRE.Z.M"  # deliberately outside the indexed catalog
         cache.put_observations(_result(code, [("2024-01-02", 1000.0)]))
         assert cache.get_observations(code, "2024-01-02", "2024-01-02") == [
             Observation("2024-01-02", 1000.0)
@@ -191,10 +198,11 @@ class TestFreshness:
         cache.put_observations(sample_result)
         assert len(cache.get_observations(USD, "2024-01-01", "2024-01-02")) == 2
 
-    def test_stale_rows_excluded_unless_requested(self, tmp_path, sample_result):
-        """ttl_seconds=0: rows are stale at once — hidden by default, shown with include_stale."""
-        cache = Cache(db_path=tmp_path / "stale.db", ttl_seconds=0)
+    def test_stale_rows_excluded_unless_requested(self, db, sample_result):
+        """ttl_seconds=0: rows past the cutoff are hidden by default, shown with include_stale."""
+        cache = Cache(db_path=db, ttl_seconds=0)
         cache.put_observations(sample_result)
+        _set_age(db, USD, seconds=1)
         assert cache.get_observations(USD, "2024-01-01", "2024-01-02") == []
         assert cache.get_observations(
             USD, "2024-01-01", "2024-01-02", include_stale=True
@@ -253,9 +261,10 @@ class TestCovers:
         cache.put_observations(sample_result)  # no window recorded
         assert cache.covers(USD, "2024-01-01", "2024-01-02") is False
 
-    def test_stale_window_needs_include_stale(self, tmp_path, sample_result):
-        cache = Cache(db_path=tmp_path / "stale.db", ttl_seconds=0)
+    def test_stale_window_needs_include_stale(self, db, sample_result):
+        cache = Cache(db_path=db, ttl_seconds=0)
         cache.put_observations(sample_result, "2024-01-01", "2024-01-02")
+        _set_age(db, USD, seconds=1)
         assert cache.covers(USD, "2024-01-01", "2024-01-02") is False
         assert cache.covers(USD, "2024-01-01", "2024-01-02", include_stale=True) is True
 
@@ -298,7 +307,7 @@ class TestLoad:
         assert result.fetched_at.tzinfo is not None
 
     def test_load_raw_code_returns_string_series(self, cache):
-        code = "F072.CLP.EUR.N.O.D"
+        code = "F073.TCO.PRE.Z.M"  # deliberately outside the indexed catalog
         cache.put_observations(_result(code, [("2024-01-02", 1000.0)]))
         result = cache.load(code, "2024-01-02", "2024-01-02")
         assert result.series == code
@@ -317,9 +326,10 @@ class TestLoad:
         result = cache.load(USD, "2024-01-01", "2024-01-31")
         assert result.observations == []
 
-    def test_load_fresh_only_by_default(self, tmp_path, sample_result):
-        cache = Cache(db_path=tmp_path / "stale.db", ttl_seconds=0)
+    def test_load_fresh_only_by_default(self, db, sample_result):
+        cache = Cache(db_path=db, ttl_seconds=0)
         cache.put_observations(sample_result, "2024-01-01", "2024-01-02")
+        _set_age(db, USD, seconds=1)
         assert cache.load(USD, "2024-01-01", "2024-01-02").observations == []
         assert cache.load(
             USD, "2024-01-01", "2024-01-02", include_stale=True
@@ -473,10 +483,11 @@ class TestDeprecatedShims:
         with pytest.deprecated_call():
             assert cache.get("not-a-key") is None
 
-    def test_get_does_not_serve_stale(self, tmp_path, sample_result):
-        cache = Cache(db_path=tmp_path / "stale.db", ttl_seconds=0)
+    def test_get_does_not_serve_stale(self, db, sample_result):
+        cache = Cache(db_path=db, ttl_seconds=0)
         with pytest.deprecated_call():
             cache.set_series(Series.USD, "2024-01-01", "2024-01-02", sample_result)
+        _set_age(db, USD, seconds=1)
         with pytest.deprecated_call():
             assert cache.get_series(Series.USD, "2024-01-01", "2024-01-02") is None
 

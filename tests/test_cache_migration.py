@@ -228,7 +228,7 @@ class TestLegacyMigration:
     def test_raw_code_series_migrates(self, tmp_path):
         """A series outside the indexed enum migrates under its raw code."""
         db = tmp_path / "legacy.db"
-        code = "F072.CLP.EUR.N.O.D"
+        code = "F073.TCO.PRE.Z.M"  # deliberately outside the indexed catalog
         _make_legacy_db(
             db,
             [(f"{code}|2024-01-02|2024-01-02",

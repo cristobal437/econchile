@@ -4,7 +4,7 @@ Tests for econchile.series_map — BCCh series enum catalog.
 Run with:
     pytest tests/test_series_map.py -v
 
-Validates all 28 v0.2 indexed series members, metadata correctness,
+Validates all 30 v0.3 indexed series members, metadata correctness,
 from_code lookup, uniqueness, and list_all.
 """
 
@@ -13,7 +13,7 @@ import pytest
 from econchile.series_map import Series
 from econchile.types import Frequency, Representation, SeriesMeta
 
-EXPECTED_COUNT = 28
+EXPECTED_COUNT = 30
 
 # ── member -> (code, frequency, representation) ──────────────────────────
 # Every code here was live-verified against the BCCh API before inclusion
@@ -23,6 +23,8 @@ CATALOG: dict[str, tuple[str, Frequency, Representation]] = {
     "UF": ("F073.UFF.PRE.Z.D", Frequency.DAILY, Representation.LEVEL),
     "USD": ("F073.TCO.PRE.Z.D", Frequency.DAILY, Representation.LEVEL),
     "EURO": ("F072.EUR.USD.N.O.D", Frequency.DAILY, Representation.LEVEL),
+    # CLP per EUR - the direction that EURO (EUR per USD) is NOT.
+    "CLP_EUR": ("F072.CLP.EUR.N.O.D", Frequency.DAILY, Representation.LEVEL),
     "TCM": ("F073.TCM.IND.199502.D", Frequency.DAILY, Representation.INDEX),
     "TCR": ("F073.TCR.IND.199101.M", Frequency.MONTHLY, Representation.INDEX),
     "UTM": ("F073.UTR.PRE.Z.M", Frequency.MONTHLY, Representation.LEVEL),
@@ -50,6 +52,7 @@ CATALOG: dict[str, tuple[str, Frequency, Representation]] = {
     "OCUPADOS": ("F049.OCU.PMT.INE9.01.M", Frequency.MONTHLY, Representation.LEVEL),
     # Expectations
     "TPM_EXPECTED": ("F089.TPM.TAS.11.M", Frequency.MONTHLY, Representation.LEVEL),
+    "TPM_11M": ("F089.TPM.TAS.14.M", Frequency.MONTHLY, Representation.LEVEL),
     "IPC_EXPECTED": ("F089.IPC.V12.14.M", Frequency.MONTHLY, Representation.YOY),
     # External + macro
     "EXPORTACIONES_COBRE": ("F068.B1.FLU.A1.0.C.N.Z.Z.Z.Z.6.0.M", Frequency.MONTHLY, Representation.LEVEL),

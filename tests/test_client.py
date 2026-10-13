@@ -11,8 +11,9 @@ Run with:
 """
 
 import os
+import sqlite3
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -80,6 +81,24 @@ def assert_same_data(served, expected):
     assert served.observations == expected.observations
     assert served.source == expected.source
     assert served.metadata == expected.metadata
+
+
+def _age(db_path, series, **delta):
+    """Backdate a series' rows so freshness tests never depend on clock ticks.
+
+    This host's clock ticks coarsely (~15 ms), so a row written in the same tick
+    as the read ties at ``now - ttl_seconds`` and counts as FRESH.  Without an
+    explicit age the test flips on where the tick boundary lands.
+    """
+    code = series.value if hasattr(series, "value") else series
+    stamp = (datetime.now(timezone.utc) - timedelta(**delta)).isoformat(timespec="microseconds")
+    conn = sqlite3.connect(str(db_path))
+    try:
+        conn.execute("UPDATE observations SET fetched_at = ? WHERE series = ?", (stamp, code))
+        conn.execute("UPDATE fetched_windows SET fetched_at = ? WHERE series = ?", (stamp, code))
+        conn.commit()
+    finally:
+        conn.close()
 
 
 class TestGet:
@@ -268,7 +287,7 @@ class TestSeriesResolution:
 
     def test_raw_code_outside_catalog_passes_through(self, client, monkeypatch):
         """Any BCCh code works, even outside the indexed enum (v0.2.1)."""
-        code = "F072.CLP.EUR.N.O.D"  # CLP per EUR, not indexed
+        code = "F073.TCO.PRE.Z.M"  # deliberately outside the indexed catalog
         raw_result = SeriesResult(
             series=code,
             observations=[Observation(date="2024-01-02", value=1000.0)],
@@ -498,11 +517,13 @@ class TestCacheFirstWindows:
         assert len(calls) == 1
 
     def test_stale_window_goes_to_api_and_is_refreshed(self, tmp_path, monkeypatch):
-        """ttl_seconds=0: stored data is stale at once, so get() hits the API."""
-        client = BcchClient(token="test-token", db_path=tmp_path / "ttl0.db", ttl_seconds=0)
+        """ttl_seconds=0: stored data is stale, so get() hits the API and refreshes it."""
+        db = tmp_path / "ttl0.db"
+        client = BcchClient(token="test-token", db_path=db, ttl_seconds=0)
         client._cache.put_observations(
             _usd_result([("2024-01-02", 1.0)]), "2024-01-01", "2024-01-31"
         )
+        _age(db, Series.USD, seconds=1)
         fresh = _usd_result([("2024-01-02", 1.5)])
         calls = []
         monkeypatch.setattr(

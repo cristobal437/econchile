@@ -76,7 +76,7 @@ result = client.get(Series.USD, "2024-01-01", "2024-03-31")  # if the API fails,
 
 ## Indexed series (v0.2)
 
-The library indexes 28 series for convenient access via `Series.NAME` or `client.get("name")`. All codes were live-verified against the BCCh API.
+The library indexes 30 series for convenient access via `Series.NAME` or `client.get("name")`. All codes were live-verified against the BCCh API.
 
 **FX & money**
 
@@ -85,6 +85,7 @@ The library indexes 28 series for convenient access via `Series.NAME` or `client
 | `Series.UF` | `F073.UFF.PRE.Z.D` | daily | Unidad de Fomento |
 | `Series.USD` | `F073.TCO.PRE.Z.D` | daily | Nominal exchange rate (CLP/USD) |
 | `Series.EURO` | `F072.EUR.USD.N.O.D` | daily | Euro per US dollar (EUR per USD, NOT CLP/EUR) |
+| `Series.CLP_EUR` | `F072.CLP.EUR.N.O.D` | daily | Euro nominal exchange rate (CLP per EUR, the opposite direction to EURO) |
 | `Series.TCM` | `F073.TCM.IND.199502.D` | daily | Multilateral nominal exchange rate (index 2 Jan 1998=100) |
 | `Series.TCR` | `F073.TCR.IND.199101.M` | monthly | Real exchange rate index (average 1986=100) |
 | `Series.UTM` | `F073.UTR.PRE.Z.M` | monthly | Monthly Tax Unit (UTM) |
@@ -132,6 +133,7 @@ The library indexes 28 series for convenient access via `Series.NAME` or `client
 | Series | BCCh code | Frequency | Meaning |
 |--------|-----------|-----------|---------|
 | `Series.TPM_EXPECTED` | `F089.TPM.TAS.11.M` | monthly | Expected policy rate for the current month (median, EEE survey) |
+| `Series.TPM_11M` | `F089.TPM.TAS.14.M` | monthly | Expected monetary policy rate, 11 months ahead (median, EEE survey) |
 | `Series.IPC_EXPECTED` | `F089.IPC.V12.14.M` | monthly | CPI inflation expectation, 12 months ahead (11 months forward) |
 
 **External**

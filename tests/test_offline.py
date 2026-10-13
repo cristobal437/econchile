@@ -327,7 +327,7 @@ class TestSeriesResolution:
         """A BCCh code outside the indexed enum passes through (v0.2.1)."""
         from datetime import datetime
 
-        code = "F072.CLP.EUR.N.O.D"
+        code = "F073.TCO.PRE.Z.M"  # deliberately outside the indexed catalog
         offline.stub_result = SeriesResult(
             series=code,
             observations=[Observation(date="2024-01-02", value=1000.0)],

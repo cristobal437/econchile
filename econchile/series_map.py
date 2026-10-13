@@ -26,6 +26,7 @@ class Series(str, Enum):
     UF = "F073.UFF.PRE.Z.D"
     USD = "F073.TCO.PRE.Z.D"
     EURO = "F072.EUR.USD.N.O.D"  # EUR per USD (NOT CLP/EUR; that is F072.CLP.EUR.N.O.D)
+    CLP_EUR = "F072.CLP.EUR.N.O.D"  # CLP per EUR (opposite direction to EURO). Live descripEsp: "Tipo de cambio nominal euro"
     TCM = "F073.TCM.IND.199502.D"
     TCR = "F073.TCR.IND.199101.M"
     UTM = "F073.UTR.PRE.Z.M"
@@ -58,6 +59,7 @@ class Series(str, Enum):
 
     # ── Expectations ──
     TPM_EXPECTED = "F089.TPM.TAS.11.M"
+    TPM_11M = "F089.TPM.TAS.14.M"  # Live descripEsp: "Expectativas tasa de politica monetaria , dentro de 11 meses, mediana"; 11 months ahead, NOT current month
     IPC_EXPECTED = "F089.IPC.V12.14.M"
 
     # ── External ──
@@ -112,6 +114,15 @@ _META_MAP: dict[Series, SeriesMeta] = {
         series_id=Series.EURO.value,
         spanish_title="Euro por dólar de EE.UU. (EUR por USD)",
         english_title="Euro per US dollar (EUR per USD)",
+        frequency=Frequency.DAILY,
+        first_observation=None,
+        last_observation=None,
+        representation=Representation.LEVEL,
+    ),
+    Series.CLP_EUR: SeriesMeta(
+        series_id=Series.CLP_EUR.value,
+        spanish_title="Tipo de cambio nominal euro (CLP por EUR)",
+        english_title="Euro nominal exchange rate (CLP per EUR)",
         frequency=Frequency.DAILY,
         first_observation=None,
         last_observation=None,
@@ -312,6 +323,15 @@ _META_MAP: dict[Series, SeriesMeta] = {
         # Económicas). NOT 11 months ahead; that is F089.TPM.TAS.14.M.
         spanish_title="Expectativa de TPM para el mes en curso (mediana, EEE)",
         english_title="Expected monetary policy rate, current month (median, EEE survey)",
+        frequency=Frequency.MONTHLY,
+        first_observation=None,
+        last_observation=None,
+        representation=Representation.LEVEL,
+    ),
+    Series.TPM_11M: SeriesMeta(
+        series_id=Series.TPM_11M.value,
+        spanish_title="Expectativa de TPM a 11 meses (mediana, EEE)",
+        english_title="Expected monetary policy rate, 11 months ahead (median, EEE survey)",
         frequency=Frequency.MONTHLY,
         first_observation=None,
         last_observation=None,
