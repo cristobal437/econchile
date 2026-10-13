@@ -32,6 +32,9 @@ multi_series_sample.json
 htmlcov/
 .coverage
 
+# Example output (examples/charts_demo.py writes this)
+examples/dolar_2000_2010.png
+
 # Scratch / working notes
 playground.py
 discussion_prompt.txt

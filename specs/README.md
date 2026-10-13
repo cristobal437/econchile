@@ -5,7 +5,7 @@ Specs are the source of truth for behaviour. There are two kinds:
 - **Module specs** (`client_spec.md`, `fetcher_spec.md`, `cache_spec.md`,
   `offline_spec.md`, `parsers_spec.md`, `types_spec.md`, ...): the v0.1
   baseline, one per module.
-- **Release delta specs** (`v011_*`, `v012_*`, `v02_*`, `v021_*`, `v022_*`):
+- **Release delta specs** (`v011_*`, `v012_*`, `v02_*`, `v021_*`, `v022_*`, `v0_3_*`):
   what each release changed on top of the baseline.
 
 **When they disagree, the newest delta spec wins.** The tests in `tests/`
@@ -18,7 +18,11 @@ are the executable contract and always reflect the current behaviour.
 | Missing token raises `ValueError` at construction (`client_spec.md`) | Token optional at construction; `BcchApiError` at fetch time, before any network I/O | v0.1.2 |
 | Decode order UTF-16 BOM → UTF-8 (`fetcher_spec.md`) | UTF-16 BOM → UTF-8 → latin-1 | v0.1.1 |
 | HTTP 4xx never retried | HTTP 429 is retried; other 4xx are not | v0.1.1 |
-| "v0.1 catalog" of 7 series | 28 indexed series + any raw BCCh code | v0.2.0 / v0.2.1 |
+| "v0.1 catalog" of 7 series | 30 indexed series + any raw BCCh code | v0.2.0 / v0.2.1 / v0.3.0 |
 | Unknown series → `KeyError` | Code-shaped strings pass through as raw codes; only unknown names raise `KeyError` | v0.2.1 |
 | `desde > hasta` unspecified | `ValueError` before any I/O | v0.2.1 |
 | `source` may be `"cache"` / `"partial"` | Always `"api"` (cache returns the stored result unchanged) | — |
+| Cache stored whole queries in one key-based `cache` table (`cache_spec.md`) | Observation-level tables, schema v1, with automatic v0.2 migration | v0.3.0 |
+| `Cache.size()` counted query entries | Counts stored observation rows | v0.3.0 |
+| `OfflineClient` fell back only to the same `desde`/`hasta` (`offline_spec.md`) | Falls back to fresh, then stale/partial data, flagged by `stale`/`missing_dates` | v0.3.0 |
+| `SeriesResult` had five fields (`types_spec.md`) | Plus additive, defaulted `stale` and `missing_dates` | v0.3.0 |

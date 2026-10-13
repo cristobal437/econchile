@@ -65,16 +65,16 @@ Dates are always `YYYY-MM-DD`. Missing observations have `value=None`.
 | Client | Strategy | Best for |
 |--------|----------|----------|
 | `BcchClient` | **Cache-first** — serves from the local cache when fresh, hits the API only on a miss | Interactive use, repeated queries |
-| `OfflineClient` | **API-first** — always tries the API, falls back to the cache when it fails | Cron jobs and scripts that must not crash |
+| `OfflineClient` | **API-first** — always tries the API; if it fails, serves cached data (stale or partial if need be) and flags it | Cron jobs and scripts that must not crash |
 
 ```python
 from econchile import OfflineClient, Series
 
 client = OfflineClient()
-result = client.get(Series.USD, "2024-01-01", "2024-03-31")  # if the API fails, serves the cached result of this same query (within the TTL)
+result = client.get(Series.USD, "2024-01-01", "2024-03-31")  # if the API fails, serves whatever the cache covers and flags it
 ```
 
-## Indexed series (v0.2)
+## Indexed series (v0.3)
 
 The library indexes 30 series for convenient access via `Series.NAME` or `client.get("name")`. All codes were live-verified against the BCCh API.
 
@@ -171,7 +171,7 @@ for meta in hits:
 - **Representations**: `IPC_VAR` is a monthly % change, `IPC_INDEX` is a base-2023 index. Same variable, different meaning.
 - **Cache freshness**: cached results are reused for 24 hours by default; configure via `ttl_seconds` on `BcchClient(...)` or `OfflineClient(...)` (the cache lives at `~/.econchile/cache.db`).
 - **Errors**: unknown series names raise `KeyError`, malformed or inverted dates (`desde` after `hasta`) raise `ValueError`, API failures raise `BcchApiError`, and `OfflineClient` raises `BcchOfflineError` when the cache fallback is also empty. Import them with `from econchile import BcchApiError, BcchOfflineError`. **No token?** Both clients construct fine without one — the token is only needed when the API is actually called: `BcchClient` cache hits work, and `OfflineClient` serves cached data (a missing token is treated as an API failure, so the cache fallback applies).
-- **Offline fallback scope**: the cache stores whole queries. `OfflineClient` can only fall back to a result for the **same series and the same `desde`/`hasta`**, fetched within the TTL (24h by default). A query with a new date window (e.g. "up to today" in a daily cron) has nothing to fall back to.
+- **Offline fallback scope** (changed in v0.3): `OfflineClient` falls back to whatever the cache covers for that series, not just the exact same `desde`/`hasta`. When the API is down it will serve **stale** data (older than the 24h TTL, up to `max_stale_age`, 7 days by default) and even a **partial** window, flagging both: `result.stale` is `True` and `result.missing_dates` lists the boundaries it could not cover. Data older than 7 days is never served. Pass `strict=True` to refuse partial data instead.
 - **Token with special characters**: BCCh API tokens may contain `/` characters. The library URL-encodes them automatically via `urllib.parse.urlencode` (`/` → `%2F`), so you can paste the token as-is. Only if you build request URLs *by hand* (e.g. `curl`) do you need to encode it yourself — `urllib.parse.quote(token)` — otherwise the BCCh API rejects the request.
 
 ## API
@@ -188,7 +188,24 @@ A `SeriesResult` has:
 - `observations` — list of `Observation(date: str, value: float | None)`
 - `fetched_at` — timestamp (UTC)
 - `source` — always `"api"` today (cache hits return the stored result unchanged)
+- `stale` — `True` when the offline fallback served data older than the TTL (default `False`)
+- `missing_dates` — ISO dates at the requested boundaries with nothing stored, e.g. `["2024-07-01"]`. Never lists dates whose value is `None`: those are BCCh "ND" (queried, no value), not missing
 - `metadata` — as returned by BCCh: `series_id`, `descripEsp`, `descripIng`, `series_infos`. For frequency and representation use `Series.X.meta()`
+
+### Stale and partial results
+
+```python
+from econchile import OfflineClient, Series, BcchOfflineError
+
+client = OfflineClient(strict=True)   # refuse partial data instead of serving it
+try:
+    result = client.get(Series.USD, "2024-01-01", "2024-12-31")
+except BcchOfflineError:
+    ...                               # API down AND the cache could not cover the window
+else:
+    print(result.stale)               # served data older than ttl_seconds (24h)?
+    print(result.missing_dates)       # boundaries the cache had nothing for
+```
 
 ## Development
 
