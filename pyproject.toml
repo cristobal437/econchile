@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "econchile"
-version = "0.3.0"
+version = "0.3.1"
 description = "Python library to retrieve Chilean macroeconomic data"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -23,7 +23,11 @@ classifiers = [
     "Programming Language :: Python :: 3.14",
     "Topic :: Scientific/Engineering :: Information Analysis",
 ]
-dependencies = ["requests>=2.31"]
+# certifi floor: eMudhra/emSign CA compromise (Oct 2026, GHSA-6q48-6c7w-9gw2).
+# requests verifies TLS against certifi's bundle (requests/certs.py imports
+# certifi.where), so this floor is what keeps an installed econchile off a
+# trust store that still contains the compromised emSign root.
+dependencies = ["requests>=2.31", "certifi>=2026.10.19"]
 
 [project.urls]
 Homepage = "https://github.com/cristobal437/econchile"

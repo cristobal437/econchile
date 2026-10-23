@@ -1,6 +1,6 @@
 """econchile — Chilean macroeconomic data, made simple."""
 
-__version__ = "0.3.0"
+__version__ = "0.3.1"
 
 from econchile.client import BcchClient
 from econchile.offline import OfflineClient
