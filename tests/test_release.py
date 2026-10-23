@@ -248,26 +248,35 @@ class TestV031SecurityFloor:
 
     FLOOR = (2026, 10, 19)
 
-    def _dependencies_line(self) -> str:
+    def _certifi_specifier(self) -> str:
+        """The certifi requirement as actually written, comments stripped.
+
+        Only quoted requirement strings count: a version mentioned in a
+        trailing comment is not a dependency, and would otherwise satisfy a
+        naive substring check while pip installed something else entirely.
+        """
         pyproject = _read("pyproject.toml")
         match = re.search(r"^dependencies\s*=\s*(.+)$", pyproject, re.MULTILINE)
         assert match, "no dependencies = [...] found in pyproject.toml"
-        return match.group(1)
-
-    def test_certifi_is_a_direct_dependency(self):
-        """A transitive-only certifi can be satisfied by a stale bundle."""
-        assert "certifi" in self._dependencies_line(), (
+        specs = re.findall(r'"([^"]+)"', match.group(0).split("#", 1)[0])
+        for spec in specs:
+            if spec.startswith("certifi"):
+                return spec
+        raise AssertionError(
             "certifi must be declared in [project] dependencies, not left to "
-            "requests to pull in, so the floor is enforced at install time"
+            f"requests to pull in, so the floor is enforced at install time: {specs}"
         )
 
+    def test_certifi_is_a_direct_dependency(self):
+        assert self._certifi_specifier()
+
     def test_certifi_floor_is_at_least_the_patched_release(self):
-        line = self._dependencies_line()
-        match = re.search(r"certifi>=(\d{4})\.(\d{1,2})\.(\d{1,2})", line)
-        assert match, f"no parsable certifi floor in: {line}"
+        spec = self._certifi_specifier()
+        match = re.search(r"(\d{4})\.(\d{1,2})\.(\d{1,2})", spec)
+        assert match, f"no parsable version floor in certifi specifier: {spec!r}"
         floor = tuple(int(part) for part in match.groups())
         assert floor >= self.FLOOR, (
-            f"certifi floor {match.group(0)} is older than the emSign fix; "
-            "the compromised emSign ECC Root CA - G3 is still trusted by "
-            "certifi before 2026.10.19"
+            f"certifi floor {match.group(0)} is older than the emSign fix; the "
+            "compromised emSign ECC Root CA - G3 is still trusted by certifi "
+            "before 2026.10.19"
         )
