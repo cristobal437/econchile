@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-10-23
+
+Security patch for the eMudhra / emSign CA compromise. The private keys of
+eight eMudhra intermediate CAs were recovered from the certificates
+themselves, so an attacker holding them can impersonate any site for any
+client that still trusts the emSign roots. Browser vendors pushed revocation
+on 17-22 Oct; everything else needs a software update.
+
+### Security
+
+- Require `certifi>=2026.10.19`, the first release with the compromised
+  emSign root removed (GHSA-6q48-6c7w-9gw2). It was previously only a
+  transitive dependency of `requests`, so econchile could be installed onto
+  an environment whose bundle still trusted the compromised root. `requests`
+  verifies TLS against certifi's bundle and nothing else, so this floor is
+  what actually changes what an installed econchile trusts. No API change.
+
+### Notes
+
+- Upgrading econchile does not, by itself, fix your machine: each tool
+  carries its own trust store. pip has a vendored certifi, uv bundles its
+  own roots, and Git for Windows ships a separate CA bundle. Patched
+  versions per tool: certifi 2026.10.19, pip 26.2.2, uv 0.13.5, Git for
+  Windows 2.56.0.3.
+
 ## [0.3.0] - 2026-10-13
 
 Observation-level cache: the cache stores individual data points now, so the

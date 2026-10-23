@@ -235,3 +235,48 @@ class TestV03DeadCodeRemoved:
         are the contract; the demo follows them, never the other way round.
         """
         assert os.path.exists(os.path.join(REPO_ROOT, "examples", "demo.py"))
+
+
+class TestV031SecurityFloor:
+    """v0.3.1: the certifi floor for the eMudhra/emSign CA compromise.
+
+    requests verifies TLS with certifi's bundle and nothing else
+    (requests/certs.py is `from certifi import where`), so declaring the floor
+    is what keeps an installed econchile off a trust store that still contains
+    the compromised emSign root (GHSA-6q48-6c7w-9gw2).
+    """
+
+    FLOOR = (2026, 10, 19)
+
+    def _certifi_specifier(self) -> str:
+        """The certifi requirement as actually written, comments stripped.
+
+        Only quoted requirement strings count: a version mentioned in a
+        trailing comment is not a dependency, and would otherwise satisfy a
+        naive substring check while pip installed something else entirely.
+        """
+        pyproject = _read("pyproject.toml")
+        match = re.search(r"^dependencies\s*=\s*(.+)$", pyproject, re.MULTILINE)
+        assert match, "no dependencies = [...] found in pyproject.toml"
+        specs = re.findall(r'"([^"]+)"', match.group(0).split("#", 1)[0])
+        for spec in specs:
+            if spec.startswith("certifi"):
+                return spec
+        raise AssertionError(
+            "certifi must be declared in [project] dependencies, not left to "
+            f"requests to pull in, so the floor is enforced at install time: {specs}"
+        )
+
+    def test_certifi_is_a_direct_dependency(self):
+        assert self._certifi_specifier()
+
+    def test_certifi_floor_is_at_least_the_patched_release(self):
+        spec = self._certifi_specifier()
+        match = re.search(r"(\d{4})\.(\d{1,2})\.(\d{1,2})", spec)
+        assert match, f"no parsable version floor in certifi specifier: {spec!r}"
+        floor = tuple(int(part) for part in match.groups())
+        assert floor >= self.FLOOR, (
+            f"certifi floor {match.group(0)} is older than the emSign fix; the "
+            "compromised emSign ECC Root CA - G3 is still trusted by certifi "
+            "before 2026.10.19"
+        )
