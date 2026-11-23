@@ -214,7 +214,15 @@ pip install -e ".[test]"
 python -m pytest tests/
 ```
 
-Want to see the whole library in action? Run the interactive walkthrough, or open the charts tutorial:
+Want to see the whole library in action without setting up anything? Run the
+offline demo — it needs no token and no network, it uses the bundled sample
+data:
+
+```bash
+python examples/demo.py
+```
+
+Or open the notebooks:
 
 ```bash
 jupyter notebook examples/econchile_walkthrough.ipynb

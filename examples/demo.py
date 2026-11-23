@@ -57,9 +57,10 @@ def load_csv_backup():
 # directly — they'd write:
 #
 #   from econchile import BcchClient
-#   client = BcchClient()                    # reads BCCH_USER / BCCH_PASSWORD
-#   df = client.get("UF", "2020-01", "2024-12")
-#   df = client.get("PIB", "2020-01", "2024-12", source="csv")
+#   client = BcchClient()                 # reads the BCCH_TOKEN env var
+#   result = client.get("UF", "2020-01-01", "2024-12-31")
+#   for obs in result.observations:
+#       print(obs.date, obs.value)
 #   results = client.search("empleo")
 
 def query_series(series_name: str, source: str = "json") -> list[dict]:
@@ -397,12 +398,11 @@ if __name__ == "__main__":
     print("#" * 62 + "\n")
 
     print("TECHNICAL NOTE:")
-    print("  In the real library, all these calls go through:")
-    print("    1. BcchClient (reads API credentials from env)")
-    print("    2. Cache layer (checks SQLite before hitting network)")
-    print("    3. Async fetcher (concurrent requests with retry + backoff)")
-    print("    4. converters.py (safe_float/safe_date clean the raw response)")
-    print("    5. Offline fallback (JSON → lean CSV if API is down)")
+    print("  In the real library, these calls go through:")
+    print("    1. Fetcher (requests.get, retries with exponential backoff)")
+    print("    2. Cache layer (one SQLite db, fresh windows per series)")
+    print("    3. parsers.py (DD-MM-YYYY dates, ND -> None, comma decimals)")
+    print("    4. OfflineClient (serves the SQLite cache when the API fails)")
     print(f"\n  LEAN DATA POLICY:")
     print(f"    - 278-column CSV trimmed to 70 columns")
     print(f"    - Dropped: DIF_*, LN_*, DIF_LN_* and their lags")
