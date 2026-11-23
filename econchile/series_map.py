@@ -1,5 +1,5 @@
 """
-BCCh macroeconomic series — v0.2 indexed catalog.
+BCCh macroeconomic series — indexed catalog.
 
 Each member maps a human-readable name to a BCCh series code.
 Metadata (frequency, representation) is attached via :meth:`meta`.
@@ -20,7 +20,7 @@ from econchile.types import Frequency, Representation, SeriesMeta
 
 
 class Series(str, Enum):
-    """BCCh macroeconomic series — v0.2 indexed catalog."""
+    """BCCh macroeconomic series — indexed catalog."""
 
     # ── FX & money ──
     UF = "F073.UFF.PRE.Z.D"
